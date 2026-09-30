@@ -111,16 +111,18 @@ pub struct PeruDiscoveryResult {
     pub total_cuentas_portal: usize,
     pub cuentas: Vec<AccountRoleInfo>,
     pub omitidas: Vec<String>,
+    pub duracion_segundos: u64,
 }
 
 #[tauri::command]
 pub async fn discover_peru_accounts(app: AppHandle) -> Result<PeruDiscoveryResult, RefreshError> {
-    emit_progress("eks", &app, "descubriendo_cuentas", "Perú", 1, 1, "running");
+    let started_at = std::time::Instant::now();
+    emit_progress("eks-peru", &app, "descubriendo_cuentas", "Perú", 1, 1, "running");
 
     // Igual que en Chile — asegura la sesión en vez de exigir que ya
     // exista, para que el login deje de ser un paso manual obligatorio.
     if let Err(e) = super::sso::ensure_peru_sso(&app).await {
-        emit_progress("eks", &app, "descubriendo_cuentas", "Perú", 1, 1, "error");
+        emit_progress("eks-peru", &app, "descubriendo_cuentas", "Perú", 1, 1, "error");
         return Err(e);
     }
 
@@ -130,7 +132,7 @@ pub async fn discover_peru_accounts(app: AppHandle) -> Result<PeruDiscoveryResul
     let (token, _expiry) = match find_cached_token(&cache_dir, &accounts_cfg.peru.portal_url) {
         Some(t) => t,
         None => {
-            emit_progress("eks", &app, "descubriendo_cuentas", "Perú", 1, 1, "error");
+            emit_progress("eks-peru", &app, "descubriendo_cuentas", "Perú", 1, 1, "error");
             return Err(RefreshError::new(
                 "sin_sesion",
                 "La sesión se validó pero no se encontró el token en caché (inesperado).",
@@ -141,7 +143,7 @@ pub async fn discover_peru_accounts(app: AppHandle) -> Result<PeruDiscoveryResul
     let portal_accounts = match list_accounts(&token, &accounts_cfg.sso_region) {
         Ok(p) => p,
         Err(e) => {
-            emit_progress("eks", &app, "descubriendo_cuentas", "Perú", 1, 1, "error");
+            emit_progress("eks-peru", &app, "descubriendo_cuentas", "Perú", 1, 1, "error");
             return Err(e);
         }
     };
@@ -172,7 +174,7 @@ pub async fn discover_peru_accounts(app: AppHandle) -> Result<PeruDiscoveryResul
         }
     }
 
-    emit_progress("eks", &app, "descubriendo_cuentas", "Perú", 1, 1, "ok");
+    emit_progress("eks-peru", &app, "descubriendo_cuentas", "Perú", 1, 1, "ok");
 
     let total_cuentas = cuentas.len() as u32;
     for (i, c) in cuentas.iter().enumerate() {
@@ -188,13 +190,14 @@ pub async fn discover_peru_accounts(app: AppHandle) -> Result<PeruDiscoveryResul
     }
     let total_omitidas = omitidas.len() as u32;
     for (i, o) in omitidas.iter().enumerate() {
-        emit_progress("eks", &app, "cuenta_omitida", o, (i + 1) as u32, total_omitidas, "error");
+        emit_progress("eks-peru", &app, "cuenta_omitida", o, (i + 1) as u32, total_omitidas, "error");
     }
 
     Ok(PeruDiscoveryResult {
         total_cuentas_portal,
         cuentas,
         omitidas,
+        duracion_segundos: started_at.elapsed().as_secs(),
     })
 }
 
@@ -261,7 +264,7 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
         idx += 1;
         let item_label = format!("{} ({})", account.profile, account.account_name);
 
-        emit_progress("eks", &app, "escribiendo_perfil", &item_label, idx, total_cuentas, "running");
+        emit_progress("eks-peru", &app, "escribiendo_perfil", &item_label, idx, total_cuentas, "running");
         if let Err(e) = write_peru_account_profile(
             &config_path,
             &account.profile,
@@ -270,33 +273,37 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
             &base_profile,
             &eks_region,
         ) {
-            omitidos.push(format!("{} — error escribiendo perfil: {}", item_label, e.mensaje));
-            emit_progress("eks", &app, "escribiendo_perfil", &item_label, idx, total_cuentas, "error");
+            let msg = format!("{} — error escribiendo perfil: {}", item_label, e.mensaje);
+            omitidos.push(msg.clone());
+            emit_progress("eks-peru", &app, "escribiendo_perfil", &msg, idx, total_cuentas, "error");
             continue;
         }
 
         if !check_sts_identity(&account.profile) {
-            omitidos.push(format!("{} — sin acceso con el profile", item_label));
-            emit_progress("eks", &app, "verificando_acceso_sts", &item_label, idx, total_cuentas, "error");
+            let msg = format!("{} — sin acceso con el profile", item_label);
+            omitidos.push(msg.clone());
+            emit_progress("eks-peru", &app, "verificando_acceso_sts", &msg, idx, total_cuentas, "error");
             continue;
         }
 
         let clusters = match list_eks_clusters(&account.profile, &eks_region) {
             Ok(c) => c,
             Err(e) => {
-                omitidos.push(format!("{} — error listando clusters: {}", item_label, e.mensaje));
-                emit_progress("eks", &app, "listando_clusters", &item_label, idx, total_cuentas, "error");
+                let msg = format!("{} — error listando clusters: {}", item_label, e.mensaje);
+                omitidos.push(msg.clone());
+                emit_progress("eks-peru", &app, "listando_clusters", &msg, idx, total_cuentas, "error");
                 continue;
             }
         };
 
         if clusters.is_empty() {
-            omitidos.push(format!("{} — sin clusters EKS en la región {}", item_label, eks_region));
-            emit_progress("eks", &app, "listando_clusters", &item_label, idx, total_cuentas, "error");
+            let msg = format!("{} — sin clusters EKS en la región {}", item_label, eks_region);
+            omitidos.push(msg.clone());
+            emit_progress("eks-peru", &app, "listando_clusters", &msg, idx, total_cuentas, "error");
             continue;
         }
 
-        emit_progress("eks", &app, "listando_clusters", &item_label, idx, total_cuentas, "ok");
+        emit_progress("eks-peru", &app, "listando_clusters", &item_label, idx, total_cuentas, "ok");
 
         for cluster_name in &clusters {
             match describe_cluster_status(cluster_name, &eks_region, &account.profile) {
@@ -352,7 +359,18 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
             let server_ca = {
                 let _guard = kube_mutex.lock().await;
                 if let Err(e) = update_kubeconfig(&job.cluster_name, &region, &job.profile, &job.context_alias) {
-                    return Err((job, format!("error actualizando kubeconfig: {}", e.mensaje)));
+                    let detalle = format!("error actualizando kubeconfig: {}", e.mensaje);
+                    let n = started.fetch_add(1, Ordering::SeqCst) + 1;
+                    emit_progress(
+                        "eks",
+                        &app_h,
+                        "verificando_permisos",
+                        &format!("{} — {}", item_label, detalle),
+                        n,
+                        total_jobs,
+                        "error",
+                    );
+                    return Err((job, detalle));
                 }
                 let _ = fs::create_dir_all(&workdir);
                 read_server_and_ca(&job.context_alias, &workdir)
@@ -378,14 +396,14 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
             };
 
             let n_started = started.fetch_add(1, Ordering::SeqCst) + 1;
-            emit_progress("eks", &app_h, "verificando_permisos", &item_label, n_started, total_jobs, "running");
+            emit_progress("eks-peru", &app_h, "verificando_permisos", &item_label, n_started, total_jobs, "running");
 
             let access = run_permission_checks(kargs, used_token_optimization).await;
             let _ = fs::remove_dir_all(&workdir);
 
             let n = completed.fetch_add(1, Ordering::SeqCst) + 1;
             let estado_final = if access.veredicto == "PERMISOS_OK" { "ok" } else { "error" };
-            emit_progress("eks", &app_h, "verificando_permisos", &item_label, n, total_jobs, estado_final);
+            emit_progress("eks-peru", &app_h, "verificando_permisos", &item_label, n, total_jobs, estado_final);
 
             Ok((job, access))
         }));
@@ -419,7 +437,10 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
                 omitidos.push(format!("{} / {} — {}", job.account_name, job.cluster_name, msg));
             }
             Err(e) => {
-                omitidos.push(format!("tarea interna falló (join error): {}", e));
+                let msg = format!("tarea interna falló (join error): {}", e);
+                let n = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                emit_progress("eks-peru", &app, "verificando_permisos", &msg, n, total_jobs, "error");
+                omitidos.push(msg);
             }
         }
     }

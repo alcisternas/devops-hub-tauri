@@ -3,7 +3,7 @@ use std::process::Command as StdCommand;
 use tauri::AppHandle;
 
 use crate::modules::eks::config::{load_or_create_accounts, RefreshError};
-use crate::modules::eks::permissions::update_kubeconfig;
+use crate::modules::eks::permissions::{emit_progress, update_kubeconfig};
 use crate::modules::eks::sso::{ensure_chile_sso, ensure_peru_sso};
 use crate::modules::gke::login::ensure_gcp_session;
 use crate::modules::gke::test_cluster::{gke_get_credentials, rename_context_to_alias};
@@ -102,10 +102,16 @@ pub async fn load_selected_clusters(
     let mut omitidos = 0usize;
     let mut con_errores = 0usize;
 
-    for e in &selections {
+    let total = selections.len() as u32;
+
+    for (i, e) in selections.iter().enumerate() {
+        let idx = (i + 1) as u32;
+        let item_label = format!("{} / {}", e.account_name, e.cluster);
+
         // Modo agregar: no recargar lo que ya está — igual al bash
         // (recargar un contexto existente no renueva credenciales).
         if mode == "agregar" && context_exists(&e.context_alias) {
+            emit_progress("load", &app, "cargando_cluster", &item_label, idx, total, "omitido");
             items.push(LoadResultItem {
                 cluster: e.cluster.clone(),
                 context_alias: e.context_alias.clone(),
@@ -115,6 +121,8 @@ pub async fn load_selected_clusters(
             omitidos += 1;
             continue;
         }
+
+        emit_progress("load", &app, "cargando_cluster", &item_label, idx, total, "running");
 
         let result: Result<(), RefreshError> = if e.proveedor == "aws" {
             update_kubeconfig(&e.cluster, &e.region, &e.profile, &e.context_alias)
@@ -130,6 +138,7 @@ pub async fn load_selected_clusters(
 
         match result {
             Ok(_) => {
+                emit_progress("load", &app, "cargando_cluster", &item_label, idx, total, "ok");
                 items.push(LoadResultItem {
                     cluster: e.cluster.clone(),
                     context_alias: e.context_alias.clone(),
@@ -139,6 +148,15 @@ pub async fn load_selected_clusters(
                 cargados += 1;
             }
             Err(err) => {
+                emit_progress(
+                    "load",
+                    &app,
+                    "cargando_cluster",
+                    &format!("{} — {}", item_label, err.mensaje),
+                    idx,
+                    total,
+                    "error",
+                );
                 items.push(LoadResultItem {
                     cluster: e.cluster.clone(),
                     context_alias: e.context_alias.clone(),
@@ -149,6 +167,20 @@ pub async fn load_selected_clusters(
             }
         }
     }
+
+    let resumen = format!(
+        "{} cargado(s) · {} omitido(s) · {} con error{}",
+        cargados,
+        omitidos,
+        con_errores,
+        if contextos_eliminados > 0 {
+            format!(" · {} contexto(s) anterior(es) eliminado(s)", contextos_eliminados)
+        } else {
+            String::new()
+        }
+    );
+    let estado_resumen = if con_errores > 0 { "error" } else { "ok" };
+    emit_progress("load", &app, "resumen_carga", &resumen, total, total, estado_resumen);
 
     Ok(LoadSummary {
         cargados,

@@ -11,7 +11,8 @@ use super::config::{load_or_create_accounts, RefreshError};
 use super::discovery::AccountRoleInfo;
 use super::permissions::{
     build_context_alias, check_sts_identity, describe_cluster_status, emit_progress, get_eks_token,
-    list_eks_clusters, read_server_and_ca, run_permission_checks, update_kubeconfig, write_chile_profile_block,
+    list_eks_clusters, read_server_and_ca, role_profile_name, run_permission_checks, update_kubeconfig,
+    write_chile_profile_block,
 };
 use super::sso::aws_config_path;
 
@@ -125,53 +126,58 @@ pub async fn run_full_chile_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>)
     for account in &accounts {
         for role in &account.roles {
             intento_idx += 1;
+            let role_profile = role_profile_name(&account.profile, role);
             let item_label = format!("{} / {}", account.profile, role);
 
-            emit_progress("eks", &app, "escribiendo_perfil", &item_label, intento_idx, total_intentos, "running");
+            emit_progress("eks-chile", &app, "escribiendo_perfil", &item_label, intento_idx, total_intentos, "running");
             if let Err(e) = write_chile_profile_block(
                 &config_path,
-                &account.profile,
+                &role_profile,
                 &sso_session,
                 &account.account_id,
                 role,
                 &eks_region,
             ) {
-                omitidos.push(format!("{} — error escribiendo perfil: {}", item_label, e.mensaje));
-                emit_progress("eks", &app, "escribiendo_perfil", &item_label, intento_idx, total_intentos, "error");
+                let msg = format!("{} — error escribiendo perfil: {}", item_label, e.mensaje);
+                omitidos.push(msg.clone());
+                emit_progress("eks-chile", &app, "escribiendo_perfil", &msg, intento_idx, total_intentos, "error");
                 continue;
             }
 
-            if !check_sts_identity(&account.profile) {
-                omitidos.push(format!("{} — sin acceso con el profile", item_label));
-                emit_progress("eks", &app, "verificando_acceso_sts", &item_label, intento_idx, total_intentos, "error");
+            if !check_sts_identity(&role_profile) {
+                let msg = format!("{} — sin acceso con el profile", item_label);
+                omitidos.push(msg.clone());
+                emit_progress("eks-chile", &app, "verificando_acceso_sts", &msg, intento_idx, total_intentos, "error");
                 continue;
             }
 
-            let clusters = match list_eks_clusters(&account.profile, &eks_region) {
+            let clusters = match list_eks_clusters(&role_profile, &eks_region) {
                 Ok(c) => c,
                 Err(e) => {
-                    omitidos.push(format!("{} — error listando clusters: {}", item_label, e.mensaje));
-                    emit_progress("eks", &app, "listando_clusters", &item_label, intento_idx, total_intentos, "error");
+                    let msg = format!("{} — error listando clusters: {}", item_label, e.mensaje);
+                    omitidos.push(msg.clone());
+                    emit_progress("eks-chile", &app, "listando_clusters", &msg, intento_idx, total_intentos, "error");
                     continue;
                 }
             };
 
             if clusters.is_empty() {
-                omitidos.push(format!("{} — sin clusters EKS en la región {}", item_label, eks_region));
-                emit_progress("eks", &app, "listando_clusters", &item_label, intento_idx, total_intentos, "error");
+                let msg = format!("{} — sin clusters EKS en la región {}", item_label, eks_region);
+                omitidos.push(msg.clone());
+                emit_progress("eks-chile", &app, "listando_clusters", &msg, intento_idx, total_intentos, "error");
                 continue;
             }
 
-            emit_progress("eks", &app, "listando_clusters", &item_label, intento_idx, total_intentos, "ok");
+            emit_progress("eks-chile", &app, "listando_clusters", &item_label, intento_idx, total_intentos, "ok");
 
             for cluster_name in &clusters {
-                match describe_cluster_status(cluster_name, &eks_region, &account.profile) {
+                match describe_cluster_status(cluster_name, &eks_region, &role_profile) {
                     Ok(status) if status == "ACTIVE" => {
                         let context_alias = build_context_alias("Chile", &account.account_name, role, cluster_name);
                         jobs.push(ClusterJob {
                             account_id: account.account_id.clone(),
                             account_name: account.account_name.clone(),
-                            profile: account.profile.clone(),
+                            profile: role_profile.clone(),
                             role: role.clone(),
                             cluster_name: cluster_name.clone(),
                             context_alias,
@@ -233,7 +239,18 @@ pub async fn run_full_chile_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>)
             let server_ca = {
                 let _guard = kube_mutex.lock().await;
                 if let Err(e) = update_kubeconfig(&job.cluster_name, &region, &job.profile, &job.context_alias) {
-                    return Err((job, format!("error actualizando kubeconfig: {}", e.mensaje)));
+                    let detalle = format!("error actualizando kubeconfig: {}", e.mensaje);
+                    let n = started.fetch_add(1, Ordering::SeqCst) + 1;
+                    emit_progress(
+                        "eks",
+                        &app_h,
+                        "verificando_permisos",
+                        &format!("{} — {}", item_label, detalle),
+                        n,
+                        total_jobs,
+                        "error",
+                    );
+                    return Err((job, detalle));
                 }
                 let _ = fs::create_dir_all(&workdir);
                 read_server_and_ca(&job.context_alias, &workdir)
@@ -260,14 +277,14 @@ pub async fn run_full_chile_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>)
             };
 
             let n_started = started.fetch_add(1, Ordering::SeqCst) + 1;
-            emit_progress("eks", &app_h, "verificando_permisos", &item_label, n_started, total_jobs, "running");
+            emit_progress("eks-chile", &app_h, "verificando_permisos", &item_label, n_started, total_jobs, "running");
 
             let access = run_permission_checks(kargs, used_token_optimization).await;
             let _ = fs::remove_dir_all(&workdir);
 
             let n = completed.fetch_add(1, Ordering::SeqCst) + 1;
             let estado_final = if access.veredicto == "PERMISOS_OK" { "ok" } else { "error" };
-            emit_progress("eks", &app_h, "verificando_permisos", &item_label, n, total_jobs, estado_final);
+            emit_progress("eks-chile", &app_h, "verificando_permisos", &item_label, n, total_jobs, estado_final);
 
             Ok((job, access))
         }));
@@ -301,7 +318,10 @@ pub async fn run_full_chile_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>)
                 omitidos.push(format!("{} / {} — {}", job.account_name, job.cluster_name, msg));
             }
             Err(e) => {
-                omitidos.push(format!("tarea interna falló (join error): {}", e));
+                let msg = format!("tarea interna falló (join error): {}", e);
+                let n = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                emit_progress("eks-chile", &app, "verificando_permisos", &msg, n, total_jobs, "error");
+                omitidos.push(msg);
             }
         }
     }

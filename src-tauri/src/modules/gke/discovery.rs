@@ -51,11 +51,13 @@ pub struct GcpDiscoveryResult {
     pub total_proyectos: usize,
     pub proyectos: Vec<GcpProject>,
     pub reauth_detectado: bool,
+    pub duracion_segundos: u64,
 }
 
 #[tauri::command]
 pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult, RefreshError> {
-    emit_progress("gke", &app, "descubriendo_proyectos", "GCP", 1, 1, "running");
+    let started_at = std::time::Instant::now();
+    emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "running");
 
     let accounts_cfg = load_or_create_accounts(&app)?;
     let account = accounts_cfg.gcp.chile.account.clone();
@@ -66,7 +68,7 @@ pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult,
     // los patrones de reautenticación que se detectan más abajo (esos
     // cubren token vencido a mitad de operación, no "nunca hizo login").
     if let Err(e) = super::login::ensure_gcp_session(&account) {
-        emit_progress("gke", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
+        emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
         return Err(e);
     }
 
@@ -78,7 +80,7 @@ pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult,
     if contains_reauth_signal(&stderr) {
         reauth_detectado = true;
         if let Err(e) = run_gcloud_login(&account) {
-            emit_progress("gke", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
+            emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
             return Err(e);
         }
         let retry = run_list_projects(&account);
@@ -90,7 +92,7 @@ pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult,
     let list = parsed.as_array().cloned().unwrap_or_default();
 
     if !ok && list.is_empty() {
-        emit_progress("gke", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
+        emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
         return Err(RefreshError::new(
             "listar_proyectos_gcp",
             format!(
@@ -122,7 +124,7 @@ pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult,
         })
         .collect();
 
-    emit_progress("gke", &app, "descubriendo_proyectos", "GCP", 1, 1, "ok");
+    emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "ok");
 
     let total_proyectos = proyectos.len() as u32;
     for (i, p) in proyectos.iter().enumerate() {
@@ -141,5 +143,6 @@ pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult,
         total_proyectos: proyectos.len(),
         proyectos,
         reauth_detectado,
+        duracion_segundos: started_at.elapsed().as_secs(),
     })
 }

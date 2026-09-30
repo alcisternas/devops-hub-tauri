@@ -91,29 +91,32 @@ pub async fn run_full_gke_scan(app: AppHandle, projects: Vec<GcpProject>) -> Res
         idx += 1;
         let item_label = format!("{} ({})", project.name, project.project_id);
 
-        emit_progress("gke", &app, "fijando_proyecto", &item_label, idx, total_proyectos, "running");
+        emit_progress("gke-chile", &app, "fijando_proyecto", &item_label, idx, total_proyectos, "running");
         if let Err(e) = set_active_project(&project.project_id, &account) {
-            omitidos.push(format!("{} — sin acceso al proyecto: {}", item_label, e.mensaje));
-            emit_progress("gke", &app, "fijando_proyecto", &item_label, idx, total_proyectos, "error");
+            let msg = format!("{} — sin acceso al proyecto: {}", item_label, e.mensaje);
+            omitidos.push(msg.clone());
+            emit_progress("gke-chile", &app, "fijando_proyecto", &msg, idx, total_proyectos, "error");
             continue;
         }
 
         let clusters: Vec<GkeClusterInfo> = match list_clusters_for_project(&project.project_id, &account) {
             Ok(c) => c,
             Err(e) => {
-                omitidos.push(format!("{} — error listando clusters: {}", item_label, e.mensaje));
-                emit_progress("gke", &app, "listando_clusters", &item_label, idx, total_proyectos, "error");
+                let msg = format!("{} — error listando clusters: {}", item_label, e.mensaje);
+                omitidos.push(msg.clone());
+                emit_progress("gke-chile", &app, "listando_clusters", &msg, idx, total_proyectos, "error");
                 continue;
             }
         };
 
         if clusters.is_empty() {
-            omitidos.push(format!("{} — sin clusters GKE", item_label));
-            emit_progress("gke", &app, "listando_clusters", &item_label, idx, total_proyectos, "error");
+            let msg = format!("{} — sin clusters GKE", item_label);
+            omitidos.push(msg.clone());
+            emit_progress("gke-chile", &app, "listando_clusters", &msg, idx, total_proyectos, "error");
             continue;
         }
 
-        emit_progress("gke", &app, "listando_clusters", &item_label, idx, total_proyectos, "ok");
+        emit_progress("gke-chile", &app, "listando_clusters", &item_label, idx, total_proyectos, "ok");
 
         for c in &clusters {
             if c.status != "RUNNING" {
@@ -179,7 +182,18 @@ pub async fn run_full_gke_scan(app: AppHandle, projects: Vec<GcpProject>) -> Res
             let server_ca = {
                 let _guard = kube_mutex.lock().await;
                 if let Err(e) = gke_get_credentials(&job.cluster_name, &job.location, &job.project_id, &account_h) {
-                    return Err((job, format!("error en get-credentials: {}", e.mensaje)));
+                    let detalle = format!("error en get-credentials: {}", e.mensaje);
+                    let n = started.fetch_add(1, Ordering::SeqCst) + 1;
+                    emit_progress(
+                        "gke",
+                        &app_h,
+                        "verificando_permisos",
+                        &format!("{} — {}", item_label, detalle),
+                        n,
+                        total_jobs,
+                        "error",
+                    );
+                    return Err((job, detalle));
                 }
                 let _ = fs::create_dir_all(&workdir);
                 (
@@ -206,14 +220,14 @@ pub async fn run_full_gke_scan(app: AppHandle, projects: Vec<GcpProject>) -> Res
             let kargs = build_kargs(&server_token_ca, &context_alias);
 
             let n_started = started.fetch_add(1, Ordering::SeqCst) + 1;
-            emit_progress("gke", &app_h, "verificando_permisos", &item_label, n_started, total_jobs, "running");
+            emit_progress("gke-chile", &app_h, "verificando_permisos", &item_label, n_started, total_jobs, "running");
 
             let access = run_permission_checks(kargs, used_token_optimization).await;
             let _ = fs::remove_dir_all(&workdir);
 
             let n = completed.fetch_add(1, Ordering::SeqCst) + 1;
             let estado_final = if access.veredicto == "PERMISOS_OK" { "ok" } else { "error" };
-            emit_progress("gke", &app_h, "verificando_permisos", &item_label, n, total_jobs, estado_final);
+            emit_progress("gke-chile", &app_h, "verificando_permisos", &item_label, n, total_jobs, estado_final);
 
             Ok((job, context_alias, access))
         }));
@@ -247,7 +261,10 @@ pub async fn run_full_gke_scan(app: AppHandle, projects: Vec<GcpProject>) -> Res
                 omitidos.push(format!("{} / {} — {}", job.project_name, job.cluster_name, msg));
             }
             Err(e) => {
-                omitidos.push(format!("tarea interna falló (join error): {}", e));
+                let msg = format!("tarea interna falló (join error): {}", e);
+                let n = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                emit_progress("gke-chile", &app, "verificando_permisos", &msg, n, total_jobs, "error");
+                omitidos.push(msg);
             }
         }
     }

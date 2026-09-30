@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type Variant = "primary" | "secondary" | "danger" | "danger-outline";
+type Variant = "primary" | "secondary" | "danger" | "danger-outline" | "accent-outline";
 
 // Clases, no estilos inline — un style inline nunca puede expresar :hover,
 // así que --accent-hover estaba definido en los tokens pero nunca se podía
@@ -16,6 +16,11 @@ const variantClass: Record<Variant, string> = {
   // no domine la pantalla frente a la alternativa más segura ("agregar").
   "danger-outline":
     "bg-[var(--surface-raised)] text-[var(--fail)] border border-[var(--fail)] hover:bg-[var(--fail-dim)]",
+  // El borde de "secondary" (gris apagado) se pierde contra el fondo
+  // oscuro y se lee como deshabilitado — este usa el color de acento en
+  // vez de gris, para que se note que es una acción real.
+  "accent-outline":
+    "bg-[var(--surface-raised)] text-[var(--accent)] border border-[var(--accent)] hover:bg-[var(--accent-dim)]",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -150,25 +155,6 @@ export function WarningNotice({ children }: { children: ReactNode }) {
   return (
     <div className="text-xs" style={{ color: "var(--partial)" }}>
       {children}
-    </div>
-  );
-}
-
-export function MutedList({ items }: { items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <div className="text-xs mb-1" style={{ color: "var(--partial)" }}>
-        Omitidos:
-      </div>
-      <ul
-        className="text-xs space-y-0.5 max-h-40 overflow-auto pl-3 border-l"
-        style={{ color: "var(--text-faint)", borderColor: "var(--border)" }}
-      >
-        {items.map((o, i) => (
-          <li key={i}>{o}</li>
-        ))}
-      </ul>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 [package]
 name = "devops-hub"
-version = "0.2.4"
+version = "0.2.20"
 description = "Panel de control unificado para el equipo DevOps"
 edition = "2021"
 

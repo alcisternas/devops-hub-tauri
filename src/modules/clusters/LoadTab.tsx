@@ -25,26 +25,12 @@ interface CombinedInventoryResult {
   has_gcp: boolean;
   entries: CombinedClusterEntry[];
 }
-interface LoadResultItem {
-  cluster: string;
-  context_alias: string;
-  estado: string;
-  detalle: string | null;
-}
-interface LoadSummary {
-  cargados: number;
-  omitidos: number;
-  con_errores: number;
-  items: LoadResultItem[];
-  contextos_eliminados: number;
-}
-
 function parseErr(err: unknown): string {
   const e = err as RefreshError;
   return e && e.etapa && e.mensaje ? `[${e.etapa}] ${e.mensaje}` : String(err);
 }
 
-export default function LoadTab() {
+export default function LoadTab({ active }: { active: boolean }) {
   const [entries, setEntries] = useState<CombinedClusterEntry[]>([]);
   const [status, setStatus] = useState<string>("");
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
@@ -56,13 +42,13 @@ export default function LoadTab() {
   const [estadoFilter, setEstadoFilter] = useState<string>("todos");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
-  const [loadResult, setLoadResult] = useState<LoadSummary | null>(null);
   const [loadError, setLoadError] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchAll();
-  }, []);
+    if (active) fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   async function fetchAll() {
     setFetching(true);
@@ -135,9 +121,8 @@ export default function LoadTab() {
     if (selections.length === 0) return;
     setLoading(true);
     setLoadError("");
-    setLoadResult(null);
     try {
-      setLoadResult(await invoke<LoadSummary>("load_selected_clusters", { selections, mode }));
+      await invoke("load_selected_clusters", { selections, mode });
     } catch (err) {
       setLoadError(parseErr(err));
     } finally {
@@ -153,7 +138,12 @@ export default function LoadTab() {
     <div className="h-full flex flex-col gap-3">
       {/* ── Fijo arriba: estado, búsqueda, filtros ── */}
       <div className="shrink-0 space-y-3">
-        {status && <SuccessNotice>✓ {entries.length} cluster(s) encontrados — {status}</SuccessNotice>}
+        <div className="flex items-center justify-between gap-2">
+          {status && <SuccessNotice>✓ {entries.length} cluster(s) encontrados — {status}</SuccessNotice>}
+          <Button variant="secondary" onClick={fetchAll} disabled={fetching} className="text-xs px-2.5 py-1 shrink-0">
+            Actualizar lista
+          </Button>
+        </div>
         {loadErrors.length > 0 && (
           <div className="space-y-1">
             {loadErrors.map((e, i) => (
@@ -235,9 +225,10 @@ export default function LoadTab() {
         {loadError && <ErrorNotice>{loadError}</ErrorNotice>}
       </div>
 
-      {/* ── Medio: tabla + resultado de carga, con scroll propio ── */}
+      {/* ── Medio: la tabla — ahora administra su propio scroll interno,
+          con el encabezado fuera de esa zona (ver ClusterSelectTable). ── */}
       {entries.length > 0 && (
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
+        <div className="flex-1 min-h-0">
           <ClusterSelectTable
             rows={filteredRows}
             selectedKeys={selectedKeys}
@@ -245,55 +236,6 @@ export default function LoadTab() {
             showPais
             highlightQuery={query}
           />
-
-          {loadResult && (
-            <div className="space-y-2">
-              <SuccessNotice>
-                ✓ {loadResult.cargados} cargado(s) · {loadResult.omitidos} omitido(s) · {loadResult.con_errores}{" "}
-                con error
-                {loadResult.contextos_eliminados > 0 &&
-                  ` · ${loadResult.contextos_eliminados} contexto(s) anterior(es) eliminado(s)`}
-              </SuccessNotice>
-              <div className="rounded-md border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-                <table className="w-full text-left text-xs">
-                  <thead style={{ background: "var(--surface-raised)" }}>
-                    <tr>
-                      <th className="px-2 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Cluster</th>
-                      <th className="px-2 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Contexto</th>
-                      <th className="px-2 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Estado</th>
-                      <th className="px-2 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Detalle</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadResult.items.map((it, i) => (
-                      <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-                        <td className="px-2 py-2" style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>
-                          {it.cluster}
-                        </td>
-                        <td className="px-2 py-2" style={{ color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
-                          {it.context_alias}
-                        </td>
-                        <td
-                          className="px-2 py-2"
-                          style={{
-                            color:
-                              it.estado === "cargado"
-                                ? "var(--ok)"
-                                : it.estado === "omitido"
-                                ? "var(--partial)"
-                                : "var(--fail)",
-                          }}
-                        >
-                          {it.estado}
-                        </td>
-                        <td className="px-2 py-2" style={{ color: "var(--text-faint)" }}>{it.detalle ?? ""}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -320,7 +262,7 @@ export default function LoadTab() {
                   Reemplazar contextos actuales
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant="accent-outline"
                   className="flex-1"
                   onClick={() => loadSelected("agregar")}
                   disabled={loading}

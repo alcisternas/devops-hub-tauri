@@ -11,8 +11,21 @@ interface ModuleProgressEvent {
   estado: "running" | "ok" | "error" | string;
 }
 
+// Con varias operaciones corriendo a la vez (Chile, Perú, GKE, Carga) sin
+// que ninguna se borre entre sí, hace falta poder distinguir de un
+// vistazo de dónde viene cada línea entrelazada.
+const MODULE_LABELS: Record<string, string> = {
+  "eks-chile": "[EKS-Chile]",
+  "eks-peru": "[EKS-Perú]",
+  "gke-chile": "[GKE-Chile]",
+  load: "[Carga]",
+};
+function modulePrefix(modulo: string): string {
+  return MODULE_LABELS[modulo] ?? `[${modulo}]`;
+}
+
 export default function GlobalConsole({ height }: { height: number }) {
-  const { resetSignal } = useConsole();
+  const { resetSignal, bump } = useConsole();
   const [events, setEvents] = useState<ModuleProgressEvent[]>([]);
   const [listenError, setListenError] = useState<string>("");
   const logRef = useRef<HTMLDivElement>(null);
@@ -67,12 +80,22 @@ export default function GlobalConsole({ height }: { height: number }) {
             />
           )}
         </div>
-        {last && (
-          <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-            {last.etapa} · {last.progreso}/{last.total} ·{" "}
-            {isRunning ? "en curso" : last.estado === "ok" ? "listo" : "error"}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {last && (
+            <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+              {modulePrefix(last.modulo)} {last.etapa} · {last.progreso}/{last.total} ·{" "}
+              {isRunning ? "en curso" : last.estado === "ok" ? "listo" : "error"}
+            </span>
+          )}
+          <button
+            onClick={bump}
+            disabled={events.length === 0}
+            className="text-xs px-2 py-0.5 rounded disabled:opacity-30"
+            style={{ color: "var(--text-muted)", border: "1px solid var(--border-strong)" }}
+          >
+            Limpiar
+          </button>
+        </div>
       </div>
 
       {/* Barra indeterminada (animada, sin ancho fijo) mientras corre un
@@ -105,7 +128,7 @@ export default function GlobalConsole({ height }: { height: number }) {
                 color: e.estado === "error" ? "var(--fail)" : e.estado === "ok" ? "var(--ok)" : "var(--text-muted)",
               }}
             >
-              [{e.progreso}/{e.total}] {e.etapa} — {e.item}
+              {modulePrefix(e.modulo)} [{e.progreso}/{e.total}] {e.etapa} — {e.item}
             </div>
           ))
         )}

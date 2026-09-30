@@ -1,3 +1,12 @@
+// Separa una ruta absoluta en (directorio, nombre de archivo) — para no
+// repetir el mismo directorio en cada línea cuando varios archivos
+// generados en la misma corrida viven en la misma carpeta.
+export function splitPath(fullPath: string): { dir: string; file: string } {
+  const idx = Math.max(fullPath.lastIndexOf("/"), fullPath.lastIndexOf("\\"));
+  if (idx === -1) return { dir: "", file: fullPath };
+  return { dir: fullPath.slice(0, idx), file: fullPath.slice(idx + 1) };
+}
+
 // Mismo formato que el bash (ELAPSED_MIN/ELAPSED_SEC): "Xm Ys"
 export function formatDuration(totalSeconds: number): string {
   const min = Math.floor(totalSeconds / 60);

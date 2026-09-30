@@ -6,15 +6,15 @@ import GkeSection from "./sections/GkeSection";
 export default function RefreshTab() {
   return (
     <div className="space-y-3">
-      <CollapsibleSection title="Chile" subtitle="EKS — SSO multi-cuenta, rol real por cluster">
+      <CollapsibleSection title="EKS — Chile" subtitle="SSO multi-cuenta, rol real por cluster">
         <ChileSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Perú" subtitle="EKS — acceso vía titan-pipeline, una verificación por cuenta">
+      <CollapsibleSection title="EKS — Perú" subtitle="Acceso vía titan-pipeline, una verificación por cuenta">
         <PeruSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="GKE" subtitle="Chile — proyectos descubiertos dinámicamente en la organización">
+      <CollapsibleSection title="GKE — Chile" subtitle="Proyectos descubiertos dinámicamente en la organización">
         <GkeSection />
       </CollapsibleSection>
     </div>

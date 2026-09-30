@@ -28,6 +28,9 @@ pub struct DiscoveryResult {
     // fallaron al pedir sus roles — mismo criterio que log_skip/log_warn
     // en process_portals() del bash: se registran, no rompen el resto.
     pub omitidas: Vec<String>,
+    // Duración de ESTA fase únicamente (descubrimiento) — el frontend la
+    // suma a la del recorrido completo para mostrar un total combinado.
+    pub duracion_segundos: u64,
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -121,13 +124,14 @@ fn list_account_roles(token: &str, region: &str, account_id: &str) -> Result<Vec
 
 #[tauri::command]
 pub async fn discover_chile_accounts(app: AppHandle) -> Result<DiscoveryResult, RefreshError> {
-    emit_progress("eks", &app, "descubriendo_cuentas", "Chile", 1, 1, "running");
+    let started_at = std::time::Instant::now();
+    emit_progress("eks-chile", &app, "descubriendo_cuentas", "Chile", 1, 1, "running");
 
     // Asegura la sesión (reutiliza caché si es válida, login solo si de
     // verdad hace falta) — ya no es requisito haber apretado el botón de
     // login por separado antes. Mismo comportamiento que discover_gcp_projects.
     if let Err(e) = super::sso::ensure_chile_sso(&app).await {
-        emit_progress("eks", &app, "descubriendo_cuentas", "Chile", 1, 1, "error");
+        emit_progress("eks-chile", &app, "descubriendo_cuentas", "Chile", 1, 1, "error");
         return Err(e);
     }
 
@@ -137,7 +141,7 @@ pub async fn discover_chile_accounts(app: AppHandle) -> Result<DiscoveryResult, 
     let (token, _expiry) = match find_cached_token(&cache_dir, &accounts_cfg.chile.portal_url) {
         Some(t) => t,
         None => {
-            emit_progress("eks", &app, "descubriendo_cuentas", "Chile", 1, 1, "error");
+            emit_progress("eks-chile", &app, "descubriendo_cuentas", "Chile", 1, 1, "error");
             return Err(RefreshError::new(
                 "sin_sesion",
                 "La sesión se validó pero no se encontró el token en caché (inesperado).",
@@ -148,7 +152,7 @@ pub async fn discover_chile_accounts(app: AppHandle) -> Result<DiscoveryResult, 
     let portal_accounts = match list_accounts(&token, &accounts_cfg.sso_region) {
         Ok(p) => p,
         Err(e) => {
-            emit_progress("eks", &app, "descubriendo_cuentas", "Chile", 1, 1, "error");
+            emit_progress("eks-chile", &app, "descubriendo_cuentas", "Chile", 1, 1, "error");
             return Err(e);
         }
     };
@@ -188,7 +192,7 @@ pub async fn discover_chile_accounts(app: AppHandle) -> Result<DiscoveryResult, 
         }
     }
 
-    emit_progress("eks", &app, "descubriendo_cuentas", "Chile", 1, 1, "ok");
+    emit_progress("eks-chile", &app, "descubriendo_cuentas", "Chile", 1, 1, "ok");
 
     // Detalle cuenta por cuenta en la consola — no solo el resumen. Reusa
     // el mismo canal de module_progress; total/progreso acá describen la
@@ -207,12 +211,13 @@ pub async fn discover_chile_accounts(app: AppHandle) -> Result<DiscoveryResult, 
     }
     let total_omitidas = omitidas.len() as u32;
     for (i, o) in omitidas.iter().enumerate() {
-        emit_progress("eks", &app, "cuenta_omitida", o, (i + 1) as u32, total_omitidas, "error");
+        emit_progress("eks-chile", &app, "cuenta_omitida", o, (i + 1) as u32, total_omitidas, "error");
     }
 
     Ok(DiscoveryResult {
         total_cuentas_portal,
         cuentas,
         omitidas,
+        duracion_segundos: started_at.elapsed().as_secs(),
     })
 }

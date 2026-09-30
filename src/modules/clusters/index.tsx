@@ -100,7 +100,7 @@ export default function Clusters() {
             </div>
           </div>
           <div className="h-full" style={{ display: tab === "cargar" ? "block" : "none" }}>
-            <LoadTab />
+            <LoadTab active={tab === "cargar"} />
           </div>
         </div>
 

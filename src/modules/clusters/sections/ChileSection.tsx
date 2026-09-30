@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Button, ErrorNotice, SuccessNotice, WarningNotice, MutedList, FieldLabel, MetaLine } from "../../../components/ui";
-import { formatDuration, type RefreshError } from "../shared";
-import { useConsole } from "../ConsoleContext";
+import { Button, ErrorNotice, SuccessNotice, WarningNotice, FieldLabel, MetaLine } from "../../../components/ui";
+import { formatDuration, splitPath, type RefreshError } from "../shared";
 
 interface AccountRoleInfo {
   account_id: string;
@@ -14,6 +13,7 @@ interface DiscoveryResult {
   total_cuentas_portal: number;
   cuentas: AccountRoleInfo[];
   omitidas: string[];
+  duracion_segundos: number;
 }
 interface FullRunResult {
   total_intentos_rol: number;
@@ -35,7 +35,6 @@ export default function ChileSection() {
   const [fullRunResult, setFullRunResult] = useState<FullRunResult | null>(null);
   const [error, setError] = useState<string>("");
   const [phase, setPhase] = useState<"idle" | "discovering" | "scanning">("idle");
-  const { bump } = useConsole();
 
   function parseErr(err: unknown): string {
     const e = err as RefreshError;
@@ -46,7 +45,6 @@ export default function ChileSection() {
     setError("");
     setDiscovery(null);
     setFullRunResult(null);
-    bump();
 
     setPhase("discovering");
     let disc: DiscoveryResult;
@@ -86,33 +84,50 @@ export default function ChileSection() {
 
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
-      {discovery && (
-        <SuccessNotice>
-          ✓ {discovery.total_cuentas_portal} cuentas en el portal — {discovery.cuentas.length} mapeadas,{" "}
-          {discovery.omitidas.length} omitidas — detalle en la consola
-        </SuccessNotice>
-      )}
+      {(discovery || fullRunResult) && (
+        <div className="text-xs">
+          <div className="space-y-0.5">
+            {discovery && (
+              <SuccessNotice>
+                ✓ {discovery.total_cuentas_portal} cuentas en el portal — {discovery.cuentas.length} mapeadas,{" "}
+                {discovery.omitidas.length} omitidas — detalle en la consola
+              </SuccessNotice>
+            )}
+            {fullRunResult && (
+              <div>
+                <span style={{ color: "var(--ok)" }}>
+                  ✓ {fullRunResult.total_clusters_probados} cluster(s) probados — {fullRunResult.ok} OK
+                </span>
+                {fullRunResult.insuficientes > 0 && (
+                  <span style={{ color: "var(--partial)" }}>, {fullRunResult.insuficientes} insuficientes</span>
+                )}
+                {fullRunResult.omitidos.length > 0 && (
+                  <span style={{ color: "var(--fail)" }}>, {fullRunResult.omitidos.length} omitidos</span>
+                )}
+              </div>
+            )}
+            {fullRunResult && fullRunResult.accesos_revocados > 0 && (
+              <div style={{ color: "var(--fail)" }}>
+                ⚠ {fullRunResult.accesos_revocados} acceso(s) revocado(s) desde la corrida anterior — CSV:{" "}
+                {splitPath(fullRunResult.revoked_csv_path ?? "").file}
+              </div>
+            )}
+          </div>
 
-      {fullRunResult && (
-        <div className="space-y-2 text-xs pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-          <SuccessNotice>
-            ✓ {fullRunResult.total_clusters_probados} cluster(s) probados — {fullRunResult.ok} OK,{" "}
-            {fullRunResult.insuficientes} insuficientes, {fullRunResult.omitidos.length} omitidos
-          </SuccessNotice>
-          <MetaLine>
-            {fullRunResult.total_intentos_rol} combinaciones cuenta+rol · duración:{" "}
-            {formatDuration(fullRunResult.duracion_segundos)}
-          </MetaLine>
-          {fullRunResult.shrink_warning && <WarningNotice>⚠ {fullRunResult.shrink_warning}</WarningNotice>}
-          {fullRunResult.accesos_revocados > 0 && (
-            <div className="text-xs" style={{ color: "var(--fail)" }}>
-              ⚠ {fullRunResult.accesos_revocados} acceso(s) revocado(s) — CSV: {fullRunResult.revoked_csv_path}
+          {fullRunResult && (
+            <div className="space-y-1 pt-2 mt-2 border-t" style={{ borderColor: "var(--border)" }}>
+              <MetaLine>
+                {fullRunResult.total_intentos_rol} combinaciones cuenta+rol · duración total:{" "}
+                {formatDuration((discovery?.duracion_segundos ?? 0) + fullRunResult.duracion_segundos)}
+              </MetaLine>
+              {fullRunResult.shrink_warning && <WarningNotice>⚠ {fullRunResult.shrink_warning}</WarningNotice>}
+              <MetaLine>Directorio: {splitPath(fullRunResult.inventory_path).dir}</MetaLine>
+              <MetaLine>
+                Archivos: {splitPath(fullRunResult.inventory_path).file} ·{" "}
+                {splitPath(fullRunResult.csv_path).file} · {splitPath(fullRunResult.failures_csv_path).file}
+              </MetaLine>
             </div>
           )}
-          <MetaLine>Inventario: {fullRunResult.inventory_path}</MetaLine>
-          <MetaLine>CSV: {fullRunResult.csv_path}</MetaLine>
-          <MetaLine>CSV de fallos: {fullRunResult.failures_csv_path}</MetaLine>
-          <MutedList items={fullRunResult.omitidos} />
         </div>
       )}
     </div>

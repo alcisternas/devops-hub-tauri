@@ -67,6 +67,22 @@ const PERMISSION_CHECKS: [(&str, &str, &str); 14] = [
 // bash. Distinto de Perú (que siempre fuerza titan-pipeline vía
 // devops-base, sin usar el rol real) — esto es SOLO para Chile.
 // ─────────────────────────────────────────────────────────────────────────
+// Un profile por cuenta+rol, no uno compartido por cuenta — si dos roles
+// de la misma cuenta comparten profile, el segundo que se escribe pisa
+// al primero en ~/.aws/config (mismo archivo, mismo nombre), rompiendo
+// el kubeconfig ya creado para el primer rol aunque se haya verificado
+// bien en su momento. Se usa tanto en el recorrido completo (varios
+// roles en el mismo loop) como en la prueba de un solo cluster (para que
+// probar un rol no rompa lo que ya se había probado antes para otro).
+pub(crate) fn role_profile_name(account_profile: &str, role: &str) -> String {
+    let role_slug: String = role
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    format!("{}--{}", account_profile, role_slug)
+}
+
 pub(crate) fn write_chile_profile_block(
     config_path: &PathBuf,
     profile_name: &str,
@@ -447,10 +463,15 @@ pub async fn test_single_cluster_permissions(
     let accounts_cfg = load_or_create_accounts(&app)?;
     let config_path = aws_config_path(&app)?;
 
+    // Profile propio para esta cuenta+rol — así probar un rol acá no pisa
+    // el profile que otro rol de la misma cuenta ya tenía escrito (mismo
+    // motivo que en el recorrido completo).
+    let role_profile = role_profile_name(&profile, &role);
+
     emit_progress("eks", &app, "escribiendo_perfil", &profile, 1, TOTAL, "running");
     if let Err(e) = write_chile_profile_block(
         &config_path,
-        &profile,
+        &role_profile,
         &accounts_cfg.chile.sso_session,
         &account_id,
         &role,
@@ -461,7 +482,7 @@ pub async fn test_single_cluster_permissions(
     }
 
     emit_progress("eks", &app, "verificando_acceso_sts", &profile, 2, TOTAL, "running");
-    if !check_sts_identity(&profile) {
+    if !check_sts_identity(&role_profile) {
         emit_progress("eks", &app, "verificando_acceso_sts", &profile, 2, TOTAL, "error");
         return Err(RefreshError::new(
             "sin_acceso_profile",
@@ -470,7 +491,7 @@ pub async fn test_single_cluster_permissions(
     }
 
     emit_progress("eks", &app, "listando_clusters", &profile, 3, TOTAL, "running");
-    let clusters = match list_eks_clusters(&profile, &accounts_cfg.eks_region) {
+    let clusters = match list_eks_clusters(&role_profile, &accounts_cfg.eks_region) {
         Ok(c) => c,
         Err(e) => {
             emit_progress("eks", &app, "listando_clusters", &profile, 3, TOTAL, "error");
@@ -498,7 +519,7 @@ pub async fn test_single_cluster_permissions(
     // Elegir el primer cluster ACTIVE
     let mut chosen: Option<String> = None;
     for c in &clusters {
-        match describe_cluster_status(c, &accounts_cfg.eks_region, &profile) {
+        match describe_cluster_status(c, &accounts_cfg.eks_region, &role_profile) {
             Ok(status) if status == "ACTIVE" => {
                 chosen = Some(c.clone());
                 break;
@@ -518,13 +539,13 @@ pub async fn test_single_cluster_permissions(
     let context_alias = build_context_alias("Chile", &account_name, &role, &cluster_name);
 
     emit_progress("eks", &app, "actualizando_kubeconfig", &cluster_name, 5, TOTAL, "running");
-    if let Err(e) = update_kubeconfig(&cluster_name, &accounts_cfg.eks_region, &profile, &context_alias) {
+    if let Err(e) = update_kubeconfig(&cluster_name, &accounts_cfg.eks_region, &role_profile, &context_alias) {
         emit_progress("eks", &app, "actualizando_kubeconfig", &cluster_name, 5, TOTAL, "error");
         return Err(e);
     }
 
     emit_progress("eks", &app, "verificando_permisos", &cluster_name, 6, TOTAL, "running");
-    let access = verify_cluster_access(&context_alias, &cluster_name, &accounts_cfg.eks_region, &profile).await;
+    let access = verify_cluster_access(&context_alias, &cluster_name, &accounts_cfg.eks_region, &role_profile).await;
     let estado_final = if access.veredicto == "PERMISOS_OK" { "ok" } else { "error" };
     emit_progress("eks", &app, "verificando_permisos", &cluster_name, 6, TOTAL, estado_final);
 
