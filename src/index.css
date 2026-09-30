@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────
+   Tokens de diseño — panel de control DevOps Hub.
+   Fondo profundo azul-pizarra (no negro puro), acento azul consistente
+   con el logo del sidebar. Los 3 colores de estado (ok/parcial/sin
+   acceso) codifican información real, no decoran.
+   ───────────────────────────────────────────────────────────────────── */
+:root {
+  --bg: #0a0e14;
+  --surface: #12171f;
+  --surface-raised: #171d27;
+  --border: #1f2733;
+  --border-strong: #2a3441;
+
+  --text: #e5e9f0;
+  --text-muted: #8b95a5;
+  --text-faint: #5b6472;
+
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-dim: #1a2f52;
+
+  --ok: #34d399;
+  --partial: #fbbf24;
+  --partial-dim: #2e2410;
+  --fail: #f87171;
+  --fail-dim: #2e1414;
+
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+body {
+  margin: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Scrollbar siempre visible en cualquier contenedor con overflow.
+   Sin esto, en macOS el WKWebView de Tauri respeta la preferencia del
+   sistema "mostrar barras de desplazamiento: automáticamente" y las
+   oculta hasta detectar un gesto de scroll específico — el clic y
+   arrastre para seleccionar texto no cuenta como ese gesto, así que la
+   barra nunca aparece y el contenido con scroll parece "roto".
+   ::-webkit-scrollbar cubre los 3 webviews que usa Tauri (WKWebView en
+   macOS, WebView2 en Windows, WebKitGTK en Linux — los tres son WebKit
+   o Chromium, ambos soportan este pseudo-elemento).
+   ───────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105); /* slate-600 */
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139); /* slate-500 */
+}
+
+/* Fallback para motores Gecko (Firefox) — ninguno de los webviews de
+   Tauri lo usa hoy, pero no cuesta nada dejarlo por si cambia. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(71 85 105) transparent;
+}
+
+/* Indicadores de "en curso" en la consola de Clusters */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+@keyframes indeterminate-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(333%); }
+}
+
+/* Barra para redimensionar la consola de Clusters */
+.resize-handle {
+  background: var(--border);
+}
+.resize-handle:hover {
+  background: var(--accent);
+}

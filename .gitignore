@@ -1,0 +1,29 @@
+# Dependencias — se regeneran con `npm install`
+node_modules/
+
+# Build de Rust/Tauri — se regenera con `cargo build` / `cargo tauri build`
+src-tauri/target/
+
+# Build del frontend — se regenera con `npm run build`
+dist/
+
+# Scaffolding de plataformas móviles (si alguna vez se corre `tauri android/ios init`)
+src-tauri/gen/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Configuración local de editores (cada quien tiene la suya)
+.vscode/
+.idea/
+*.swp
+
+# Variables de entorno locales, si alguna vez se usan
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+.vite/
