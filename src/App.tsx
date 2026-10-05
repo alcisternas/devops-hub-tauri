@@ -4,8 +4,8 @@ import Layout from "./components/Layout";
 import Home from "./modules/home";
 import Clusters from "./modules/clusters";
 // Cuando migren cada herramienta, se descomenta su import y su entrada en MODULES.
+import Bitbucket from "./modules/bitbucket";
 // import Cicd from "./modules/cicd";
-// import Bitbucket from "./modules/bitbucket";
 
 // Todos los módulos quedan montados SIEMPRE — nunca se desmontan al navegar
 // entre pestañas del sidebar. Antes, <Routes> montaba/desmontaba el módulo
@@ -15,8 +15,8 @@ import Clusters from "./modules/clusters";
 const MODULES: { path: string; Component: ComponentType }[] = [
   { path: "/", Component: Home },
   { path: "/clusters", Component: Clusters },
+  { path: "/bitbucket", Component: Bitbucket },
   // { path: "/cicd", Component: Cicd },
-  // { path: "/bitbucket", Component: Bitbucket },
 ];
 
 export default function App() {

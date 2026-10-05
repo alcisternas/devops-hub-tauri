@@ -1,6 +1,7 @@
 use std::process::Command;
 
 mod modules;
+use modules::bitbucket;
 use modules::eks;
 use modules::gke;
 use modules::load;
@@ -44,7 +45,12 @@ pub fn run() {
             gke::full_run::run_full_gke_scan,
             system::check_dependencies,
             load::discovery::read_combined_inventory,
-            load::loader::load_selected_clusters
+            load::loader::load_selected_clusters,
+            // ── Bitbucket Repo Creator (v0.3.0) ──
+            bitbucket::credentials::bitbucket_cred_status,
+            bitbucket::credentials::bitbucket_cred_save,
+            bitbucket::credentials::bitbucket_cred_delete,
+            bitbucket::full_run::bitbucket_crear_repos
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar la aplicación Tauri");

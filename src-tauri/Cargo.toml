@@ -1,6 +1,6 @@
 [package]
 name = "devops-hub"
-version = "0.2.20"
+version = "0.3.0"
 description = "Panel de control unificado para el equipo DevOps"
 edition = "2021"
 
@@ -19,3 +19,40 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["clock"] }
 tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "time", "sync"] }
 base64 = "0.22"
+
+# Cliente HTTP para hablar con la API de Bitbucket.
+#
+# default-features = false es OBLIGATORIO acá, no un detalle de estilo:
+# con las features por defecto, reqwest arrastra el backend "native-tls",
+# que en Linux se apoya en OpenSSL del sistema y FALLA LA COMPILACION si no
+# lo encuentra. "rustls-tls" es TLS escrito en Rust puro: no depende de
+# ninguna libreria C del sistema operativo, asi que el runner de Ubuntu,
+# el de Windows y el de macOS compilan exactamente igual sin instalar nada.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+# ─────────────────────────────────────────────────────────────────────────
+# Almacen de credenciales del sistema operativo.
+#
+# Se declara UNA VEZ POR PLATAFORMA en vez de una sola linea con las tres
+# features juntas. El crate soporta ambas formas, pero separarlo garantiza
+# que al compilar para macOS o Windows el backend de D-Bus ni siquiera se
+# intente resolver — no hay forma de que una dependencia de Linux se cuele
+# en los otros dos builds.
+#
+# Cada sistema usa su almacen nativo:
+#   macOS   → Keychain
+#   Windows → Credential Manager
+#   Linux   → Secret Service (GNOME Keyring / KWallet) via D-Bus
+#
+# El backend de Linux arrastra libdbus-sys, cuyo script de compilacion
+# necesita libdbus-1-dev y pkg-config presentes en la maquina que compila.
+# Por eso release.yml suma esos dos paquetes al paso de Linux.
+# ─────────────────────────────────────────────────────────────────────────
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }

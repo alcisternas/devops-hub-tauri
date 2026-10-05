@@ -8,8 +8,8 @@ import { APP_VERSION } from "../version";
 const NAV_ITEMS = [
   { to: "/", label: "Inicio", icon: "🏠", end: true },
   { to: "/clusters", label: "Clusters", icon: "☁️" },
+  { to: "/bitbucket", label: "Bitbucket", icon: "📦" },
   // { to: "/cicd", label: "CI/CD", icon: "🚀" },
-  // { to: "/bitbucket", label: "Bitbucket", icon: "🗂" },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

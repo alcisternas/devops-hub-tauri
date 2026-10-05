@@ -19,6 +19,7 @@ const MODULE_LABELS: Record<string, string> = {
   "eks-peru": "[EKS-Perú]",
   "gke-chile": "[GKE-Chile]",
   load: "[Carga]",
+  bitbucket: "[Bitbucket]",
 };
 function modulePrefix(modulo: string): string {
   return MODULE_LABELS[modulo] ?? `[${modulo}]`;

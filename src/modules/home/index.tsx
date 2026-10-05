@@ -24,8 +24,14 @@ const TOOLS: Tool[] = [
     desc: "Descubre cuentas EKS/GKE, verifica permisos y carga contextos a kubeconfig.",
     available: true,
   },
+  {
+    to: "/bitbucket",
+    icon: "📦",
+    title: "Bitbucket Repo Creator",
+    desc: "Crea repositorios con el estándar del equipo: commit inicial, Pipelines y ramas base.",
+    available: true,
+  },
   // { to: "/cicd", icon: "🚀", title: "CI/CD Automation", desc: "...", available: false, note: "Pendiente de migrar" },
-  // { to: "/bitbucket", icon: "🗂", title: "Bitbucket Repo Creator", desc: "...", available: false, note: "Pendiente de migrar" },
 ];
 
 export default function Home() {

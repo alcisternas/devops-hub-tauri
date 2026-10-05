@@ -123,6 +123,7 @@ export default function LoadTab({ active }: { active: boolean }) {
     setLoadError("");
     try {
       await invoke("load_selected_clusters", { selections, mode });
+      setSelectedKeys(new Set());
     } catch (err) {
       setLoadError(parseErr(err));
     } finally {

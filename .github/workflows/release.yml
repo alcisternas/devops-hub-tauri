@@ -38,11 +38,18 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      # libdbus-1-dev y pkg-config son NUEVOS (modulo Bitbucket, v0.3.0):
+      # el almacen de credenciales de Linux (Secret Service) se habla por
+      # D-Bus, y el crate libdbus-sys no compila si no encuentra la libreria
+      # de desarrollo y pkg-config para ubicarla.
+      # Este paso tiene `if: matrix.platform == 'ubuntu-22.04'`, asi que los
+      # runners de macOS y Windows lo saltan completo — ellos usan Keychain
+      # y Credential Manager, que vienen con el sistema y no instalan nada.
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
 
       - name: Install frontend dependencies
         run: npm install
