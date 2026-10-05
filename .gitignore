@@ -27,3 +27,5 @@ Thumbs.db
 *.log
 npm-debug.log*
 .vite/
+src-tauri/icons/android/
+src-tauri/icons/ios/
