@@ -2,6 +2,7 @@ use std::process::Command;
 
 mod modules;
 use modules::bitbucket;
+use modules::cicd;
 use modules::eks;
 use modules::gke;
 use modules::load;
@@ -50,7 +51,10 @@ pub fn run() {
             bitbucket::credentials::bitbucket_cred_status,
             bitbucket::credentials::bitbucket_cred_save,
             bitbucket::credentials::bitbucket_cred_delete,
-            bitbucket::full_run::bitbucket_crear_repos
+            bitbucket::full_run::bitbucket_crear_repos,
+            // ── CI/CD Automation (v0.4.0) ──
+            cicd::subnets::cicd_subnets_leer,
+            cicd::subnets::cicd_subnets_actualizar
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar la aplicación Tauri");

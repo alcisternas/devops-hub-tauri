@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Button, ErrorNotice } from "../../components/ui";
 import { ConsoleProvider, useConsole } from "../clusters/ConsoleContext";
 import GlobalConsole from "../clusters/GlobalConsole";
-import { useResizablePanel } from "../../hooks/useResizablePanel";
+import { useConsolePanel } from "../../hooks/useConsolePanel";
 import CredentialsPanel from "./CredentialsPanel";
 import RepoForm, { type DatosForm } from "./RepoForm";
 import ConfirmPanel from "./ConfirmPanel";
@@ -25,7 +25,7 @@ const DATOS_INICIALES: DatosForm = {
 // ese hook solo funciona dentro del ConsoleProvider que monta el exterior.
 function Contenido() {
   const { bump } = useConsole();
-  const consolePanel = useResizablePanel("devops-hub-console-height", 320);
+  const consolePanel = useConsolePanel(320);
 
   const [datos, setDatos] = useState<DatosForm>(DATOS_INICIALES);
   const [credOk, setCredOk] = useState(false);
@@ -137,12 +137,18 @@ function Contenido() {
       </div>
 
       {/* Consola al fondo, redimensionable arrastrando la barra */}
-      <div
-        onMouseDown={consolePanel.onDragStart}
-        className="h-1.5 shrink-0 cursor-row-resize resize-handle"
-        title="Arrastrar para cambiar el tamaño de la consola"
+      {!consolePanel.collapsed && (
+        <div
+          onMouseDown={consolePanel.onDragStart}
+          className="h-1.5 shrink-0 cursor-row-resize resize-handle"
+          title="Arrastrar para cambiar el tamaño de la consola"
+        />
+      )}
+      <GlobalConsole
+        height={consolePanel.height}
+        collapsed={consolePanel.collapsed}
+        onToggleCollapsed={consolePanel.toggleCollapsed}
       />
-      <GlobalConsole height={consolePanel.height} />
     </div>
   );
 }

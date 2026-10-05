@@ -31,7 +31,13 @@ const TOOLS: Tool[] = [
     desc: "Crea repositorios con el estándar del equipo: commit inicial, Pipelines y ramas base.",
     available: true,
   },
-  // { to: "/cicd", icon: "🚀", title: "CI/CD Automation", desc: "...", available: false, note: "Pendiente de migrar" },
+  {
+    to: "/cicd",
+    icon: "🚀",
+    title: "CI/CD Automation",
+    desc: "Genera la configuración de Jenkins, Spinnaker y Kubernetes, Cloud Run o Apigee de una solicitud.",
+    available: true,
+  },
 ];
 
 export default function Home() {

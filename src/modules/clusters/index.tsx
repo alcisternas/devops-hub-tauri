@@ -4,7 +4,7 @@ import RefreshTab from "./RefreshTab";
 import LoadTab from "./LoadTab";
 import { ConsoleProvider } from "./ConsoleContext";
 import GlobalConsole from "./GlobalConsole";
-import { useResizablePanel } from "../../hooks/useResizablePanel";
+import { useConsolePanel } from "../../hooks/useConsolePanel";
 
 interface ToolStatus {
   name: string;
@@ -23,7 +23,7 @@ type TabId = "actualizar" | "cargar";
 export default function Clusters() {
   const [tab, setTab] = useState<TabId>("actualizar");
   const [deps, setDeps] = useState<DependenciesCheckResult | null>(null);
-  const consolePanel = useResizablePanel("devops-hub-console-height", 320);
+  const consolePanel = useConsolePanel(320);
 
   useEffect(() => {
     invoke<DependenciesCheckResult>("check_dependencies")
@@ -107,12 +107,18 @@ export default function Clusters() {
         {/* ── Consola — siempre al fondo, redimensionable arrastrando la
             barra. Solo cambia el espacio disponible arriba (la franja de
             contenido), nunca el encabezado. ── */}
-        <div
-          onMouseDown={consolePanel.onDragStart}
-          className="h-1.5 shrink-0 cursor-row-resize resize-handle"
-          title="Arrastrar para cambiar el tamaño de la consola"
+        {!consolePanel.collapsed && (
+          <div
+            onMouseDown={consolePanel.onDragStart}
+            className="h-1.5 shrink-0 cursor-row-resize resize-handle"
+            title="Arrastrar para cambiar el tamaño de la consola"
+          />
+        )}
+        <GlobalConsole
+          height={consolePanel.height}
+          collapsed={consolePanel.collapsed}
+          onToggleCollapsed={consolePanel.toggleCollapsed}
         />
-        <GlobalConsole height={consolePanel.height} />
       </div>
     </ConsoleProvider>
   );

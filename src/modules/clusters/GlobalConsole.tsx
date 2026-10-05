@@ -20,12 +20,22 @@ const MODULE_LABELS: Record<string, string> = {
   "gke-chile": "[GKE-Chile]",
   load: "[Carga]",
   bitbucket: "[Bitbucket]",
+  cicd: "[CI/CD]",
 };
 function modulePrefix(modulo: string): string {
   return MODULE_LABELS[modulo] ?? `[${modulo}]`;
 }
 
-export default function GlobalConsole({ height }: { height: number }) {
+interface GlobalConsoleProps {
+  height: number;
+  // Contraída se muestra solo la barra de título. Las dos props van juntas:
+  // el estado vive en el contenedor (useConsolePanel) porque también decide
+  // si mostrar la barra de arrastre.
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+}
+
+export default function GlobalConsole({ height, collapsed = false, onToggleCollapsed }: GlobalConsoleProps) {
   const { resetSignal, bump } = useConsole();
   const [events, setEvents] = useState<ModuleProgressEvent[]>([]);
   const [listenError, setListenError] = useState<string>("");
@@ -57,8 +67,9 @@ export default function GlobalConsole({ height }: { height: number }) {
   }, []);
 
   useEffect(() => {
+    if (collapsed) return;
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [events]);
+  }, [events, collapsed]);
 
   const last = events[events.length - 1];
   const isRunning = last?.estado === "running";
@@ -96,6 +107,16 @@ export default function GlobalConsole({ height }: { height: number }) {
           >
             Limpiar
           </button>
+          {onToggleCollapsed && (
+            <button
+              onClick={onToggleCollapsed}
+              className="text-xs px-2 py-0.5 rounded"
+              style={{ color: "var(--text-muted)", border: "1px solid var(--border-strong)" }}
+              title={collapsed ? "Mostrar la consola" : "Contraer la consola"}
+            >
+              {collapsed ? "Mostrar" : "Contraer"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -103,7 +124,7 @@ export default function GlobalConsole({ height }: { height: number }) {
           paso de un solo tramo (total<=1) — de lo contrario un 1/1 se veía
           lleno al 100% desde el instante en que arrancaba, sin transmitir
           que seguía en curso. Con total>1 sí se usa el ancho real. */}
-      {last && (
+      {!collapsed && last && (
         <div className="h-1 overflow-hidden" style={{ background: "var(--border)" }}>
           {isRunning && last.total <= 1 ? (
             <div
@@ -116,7 +137,14 @@ export default function GlobalConsole({ height }: { height: number }) {
         </div>
       )}
 
-      <div ref={logRef} className="flex-1 overflow-y-auto px-4 py-2 text-xs" style={{ fontFamily: "var(--font-mono)" }}>
+      {/* Contraída se oculta con CSS, no se desmonta: el historial de
+          eventos vive en el estado de este componente y hay que conservarlo
+          para que al volver a abrirla esté todo lo que pasó mientras tanto. */}
+      <div
+        ref={logRef}
+        className="flex-1 overflow-y-auto px-4 py-2 text-xs"
+        style={{ fontFamily: "var(--font-mono)", display: collapsed ? "none" : "block" }}
+      >
         {listenError ? (
           <div style={{ color: "var(--fail)" }}>No se pudo suscribir a module_progress: {listenError}</div>
         ) : events.length === 0 ? (
