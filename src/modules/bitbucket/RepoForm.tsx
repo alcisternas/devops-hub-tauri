@@ -8,6 +8,7 @@ export interface DatosForm {
   pais: string;
   activarPipelines: boolean;
   crearRamas: boolean;
+  crearSonar: boolean;
 }
 
 interface Props {
@@ -162,11 +163,32 @@ export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
               Crear ramas base desde master
             </span>
           </label>
+
+          {/* Se comporta igual que las otras dos: habilitada siempre. Antes
+              dependía de que el token ya estuviera validado, y como esa
+              consulta es asíncrona la casilla nacía gris y se encendía sola
+              unos segundos después. Si falta el token, el aviso va en el
+              botón de continuar, no en la casilla. */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={datos.crearSonar}
+              onChange={(e) => set("crearSonar", e.target.checked)}
+              disabled={deshabilitado}
+              className="w-4 h-4 cursor-pointer"
+              style={{ accentColor: "var(--accent)" }}
+            />
+            <span className="text-sm" style={{ color: "var(--text)" }}>
+              Crear proyectos en SonarQube
+            </span>
+          </label>
         </div>
       </div>
 
       <div className="text-xs" style={{ color: "var(--text-faint)" }}>
-        Pipelines debe quedar activo para poder vincular SonarQube después.
+        {datos.crearSonar
+          ? "El proyecto de SonarQube se crea con la key definitiva y vinculado al repositorio. El widget en Bitbucket sigue siendo manual."
+          : "Pipelines debe quedar activo para poder vincular SonarQube después."}
       </div>
     </div>
   );

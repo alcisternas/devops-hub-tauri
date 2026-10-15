@@ -6,6 +6,7 @@ import { ConsoleProvider, useConsole } from "../clusters/ConsoleContext";
 import GlobalConsole from "../clusters/GlobalConsole";
 import { useConsolePanel } from "../../hooks/useConsolePanel";
 import CredentialsPanel from "./CredentialsPanel";
+import SonarCredentialsPanel from "./SonarCredentialsPanel";
 import RepoForm, { type DatosForm } from "./RepoForm";
 import ConfirmPanel from "./ConfirmPanel";
 import ResultsPanel from "./ResultsPanel";
@@ -20,6 +21,7 @@ const DATOS_INICIALES: DatosForm = {
   pais: "CL",
   activarPipelines: true,
   crearRamas: true,
+  crearSonar: true,
 };
 
 // El contenido vive en un componente aparte porque necesita useConsole, y
@@ -31,6 +33,7 @@ function Contenido() {
 
   const [datos, setDatos] = useState<DatosForm>(DATOS_INICIALES);
   const [credOk, setCredOk] = useState(false);
+  const [sonarOk, setSonarOk] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [ejecutando, setEjecutando] = useState(false);
   const [resumen, setResumen] = useState<ResumenRun | null>(null);
@@ -38,7 +41,14 @@ function Contenido() {
 
   const repos = parsearRepos(datos.reposTexto);
   const puedeCrear =
-    credOk && repos.length > 0 && datos.projectKey.trim() !== "" && datos.workspace.trim() !== "";
+    credOk &&
+    repos.length > 0 &&
+    datos.projectKey.trim() !== "" &&
+    datos.workspace.trim() !== "" &&
+    // Si se pidió SonarQube, su token tiene que estar validado antes de
+    // empezar: descubrirlo a mitad del lote dejaría repositorios creados
+    // y proyectos sin crear.
+    (!datos.crearSonar || sonarOk);
 
   const config: ConfigRun = {
     workspace: datos.workspace,
@@ -47,6 +57,9 @@ function Contenido() {
     pais: datos.pais,
     activarPipelines: datos.activarPipelines,
     crearRamas: datos.crearRamas,
+    // Si el token de Sonar dejó de ser válido, no se manda la petición
+    // aunque la casilla haya quedado marcada de antes.
+    crearSonar: datos.crearSonar && sonarOk,
   };
 
   async function ejecutar() {
@@ -90,6 +103,12 @@ function Contenido() {
       <div className="flex-1 min-h-0 px-8 pb-4 overflow-y-auto">
         <div className="space-y-3 pb-2">
           <CredentialsPanel workspace={datos.workspace} onEstadoCambia={setCredOk} activo={visible} />
+          {/* Solo se monta si se van a crear proyectos: así, con la casilla
+              desmarcada, el ítem de SonarQube del llavero no se lee nunca y
+              no aparece su diálogo. */}
+          {datos.crearSonar && (
+            <SonarCredentialsPanel onEstadoCambia={setSonarOk} activo={visible} />
+          )}
 
           {/* Mientras hay resultados, el formulario se oculta para no
               competir con ellos. No se desmonta: el estado sigue vivo si
@@ -109,7 +128,9 @@ function Contenido() {
                 )}
                 {credOk && !puedeCrear && (
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Falta el proyecto o los nombres de repositorio.
+                    {datos.crearSonar && !sonarOk
+                      ? "Falta validar el token de SonarQube."
+                      : "Falta el proyecto o los nombres de repositorio."}
                   </span>
                 )}
               </div>
