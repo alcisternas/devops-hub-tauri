@@ -4,9 +4,37 @@ Panel de control unificado para el equipo DevOps de Banco Ripley, construido con
 
 ## Módulos
 
-- **Clusters** — descubrimiento, verificación de permisos y carga a kubeconfig para EKS (Chile, Perú) y GKE (Chile). Migrado desde `refresh-eks.sh`, `refresh-gke.sh` y `load-cluster.sh`.
-- CI/CD Automation — pendiente de migrar (hoy vive como herramienta HTML separada).
-- Bitbucket Repo Creator — pendiente de migrar (hoy vive como herramienta HTML separada).
+- **Clusters** — descubrimiento, verificación de permisos y carga a kubeconfig para EKS (Chile, Perú) y GKE (Chile).
+- **Bitbucket Repo Creator** — creación de repositorios con ramas estándar, Pipelines y vinculación a SonarQube Cloud.
+- **CI/CD Automation** — generación de archivos de configuración CI/CD y subida a Bitbucket. Jenkins y Spinnaker pendientes.
+
+## Instalación
+
+Descarga el instalador para tu sistema operativo desde la sección [Releases](../../releases).
+
+### macOS
+
+Al abrir el `.dmg` descargado, macOS puede mostrar el mensaje _"DevOps Hub está dañado y no se puede abrir"_ porque el binario no está firmado con una cuenta de desarrollador de Apple. Para solucionarlo, ejecuta en Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/DevOps\ Hub.app
+```
+
+Luego abre la app normalmente.
+
+### Windows
+
+Al ejecutar el instalador, Windows SmartScreen puede mostrar _"Windows protegió tu PC"_. Haz clic en **Más información** y luego en **Ejecutar de todas formas**.
+
+### Linux (AppImage)
+
+Dale permiso de ejecución al archivo descargado antes de abrirlo:
+
+```bash
+chmod +x DevOps.Hub_*.AppImage
+```
+
+---
 
 ## Requisitos
 
@@ -33,4 +61,4 @@ Genera el instalador nativo para la plataforma actual en `src-tauri/target/relea
 
 ## Estado
 
-Versión actual: ver `package.json`. El módulo Clusters está completo y funcional; CI/CD y Bitbucket siguen pendientes de migración.
+Versión actual: ver `package.json` (v0.6.3). Módulos completos: Clusters, Bitbucket Repo Creator, CI/CD Automation (generación y subida a Bitbucket) y SonarQube Cloud. Pendientes en CI/CD: Jenkins (v0.7.0) y Spinnaker (v0.8.0).

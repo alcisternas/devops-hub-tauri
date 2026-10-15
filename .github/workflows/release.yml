@@ -26,12 +26,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -64,10 +64,32 @@ jobs:
           releaseName: 'DevOps Hub ${{ github.ref_name }}'
           releaseBody: |
             Descarga el instalador para tu sistema operativo:
-            - **macOS (Apple Silicon):** DevOps.Hub_VERSION_aarch64.dmg
-            - **macOS (Intel):** DevOps.Hub_VERSION_x86_64.dmg
-            - **Windows:** DevOps.Hub_VERSION_x64-setup.exe
-            - **Linux:** DevOps.Hub_VERSION_amd64.AppImage
+            - **macOS (Apple Silicon):** `DevOps.Hub_VERSION_aarch64.dmg`
+            - **macOS (Intel):** `DevOps.Hub_VERSION_x86_64.dmg`
+            - **Windows:** `DevOps.Hub_VERSION_x64-setup.exe`
+            - **Linux:** `DevOps.Hub_VERSION_amd64.AppImage`
+
+            ---
+
+            ### macOS — aviso de app no firmada
+
+            Si macOS muestra _"DevOps Hub está dañado y no se puede abrir"_, ejecuta en Terminal:
+
+            ```
+            xattr -dr com.apple.quarantine /Applications/DevOps\ Hub.app
+            ```
+
+            Luego abre la app normalmente.
+
+            ### Windows — aviso de SmartScreen
+
+            Si Windows muestra _"Windows protegió tu PC"_, haz clic en **Más información** → **Ejecutar de todas formas**.
+
+            ### Linux — permiso de ejecución
+
+            ```
+            chmod +x DevOps.Hub_*.AppImage
+            ```
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
