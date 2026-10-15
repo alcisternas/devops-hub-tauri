@@ -20,14 +20,6 @@ export interface CredStatus {
   detalle: string;
 }
 
-export interface SonarCredStatus {
-  almacen_disponible: boolean;
-  guardadas: boolean;
-  validas: boolean;
-  detalle: string;
-  organizacion: string | null;
-}
-
 export interface ResultadoRepo {
   repo: string;
   estado: "creado" | "ya_existia" | "error";
@@ -35,10 +27,6 @@ export interface ResultadoRepo {
   detalle: string;
   advertencias: string[];
   sonarKey: string;
-  // null cuando no se pidió crear el proyecto en SonarQube.
-  sonarEstado: "creado" | "ya_existia" | "error" | null;
-  sonarDetalle: string | null;
-  sonarBindeado: boolean;
 }
 
 export interface ResumenRun {
@@ -47,8 +35,6 @@ export interface ResumenRun {
   omitidos: number;
   conError: number;
   ramaDesarrollo: string;
-  sonarOk: number;
-  sonarPedido: boolean;
   resultados: ResultadoRepo[];
 }
 
@@ -59,7 +45,6 @@ export interface ConfigRun {
   pais: string;
   activarPipelines: boolean;
   crearRamas: boolean;
-  crearSonar: boolean;
 }
 
 // Mismo patrón de parseo que usa Clusters, para que un error de Rust se

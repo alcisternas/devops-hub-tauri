@@ -124,15 +124,6 @@ pub fn mensaje_error(cuerpo: &str) -> String {
         .unwrap_or_else(|| cuerpo.chars().take(200).collect())
 }
 
-// UUID del repositorio, tal como lo devuelve Bitbucket: con llaves incluidas,
-// ej "{77e7e6b1-ce0f-4a4b-b355-64e06088e01c}". Las llaves son parte del valor
-// y SonarQube las necesita asi para vincular el proyecto; no se quitan.
-pub fn uuid_repo(cuerpo: &str) -> Option<String> {
-    serde_json::from_str::<Value>(cuerpo)
-        .ok()
-        .and_then(|v| v.get("uuid").and_then(|u| u.as_str()).map(String::from))
-}
-
 // Saca la URL web del repositorio de la respuesta de Bitbucket.
 pub fn url_repo(cuerpo: &str) -> Option<String> {
     serde_json::from_str::<Value>(cuerpo)

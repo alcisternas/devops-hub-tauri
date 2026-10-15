@@ -8,15 +8,12 @@ export interface DatosForm {
   pais: string;
   activarPipelines: boolean;
   crearRamas: boolean;
-  crearSonar: boolean;
 }
 
 interface Props {
   datos: DatosForm;
   onCambio: (datos: DatosForm) => void;
   deshabilitado: boolean;
-  // Si el token de SonarQube no está validado, la casilla no se puede marcar.
-  sonarDisponible: boolean;
 }
 
 const estiloInput = {
@@ -25,7 +22,7 @@ const estiloInput = {
   color: "var(--text)",
 };
 
-export default function RepoForm({ datos, onCambio, deshabilitado, sonarDisponible }: Props) {
+export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
   // Helper para no repetir el spread en cada campo.
   const set = <K extends keyof DatosForm>(campo: K, valor: DatosForm[K]) =>
     onCambio({ ...datos, [campo]: valor });
@@ -45,6 +42,9 @@ export default function RepoForm({ datos, onCambio, deshabilitado, sonarDisponib
           </span>
           <input
             type="text"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={datos.workspace}
             onChange={(e) => set("workspace", e.target.value.trim())}
             disabled={deshabilitado}
@@ -61,6 +61,9 @@ export default function RepoForm({ datos, onCambio, deshabilitado, sonarDisponib
               siempre lo son, y así se evita un error silencioso. */}
           <input
             type="text"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={datos.projectKey}
             onChange={(e) => set("projectKey", e.target.value.toUpperCase().trim())}
             disabled={deshabilitado}
@@ -77,6 +80,9 @@ export default function RepoForm({ datos, onCambio, deshabilitado, sonarDisponib
           Repositorios — uno por línea · patrón br-[proyecto]-sd#####-oi#####
         </span>
         <textarea
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
           rows={5}
           value={datos.reposTexto}
           onChange={(e) => set("reposTexto", e.target.value.toLowerCase())}
@@ -156,33 +162,11 @@ export default function RepoForm({ datos, onCambio, deshabilitado, sonarDisponib
               Crear ramas base desde master
             </span>
           </label>
-
-          <label
-            className="flex items-center gap-2"
-            style={{ cursor: sonarDisponible ? "pointer" : "not-allowed" }}
-          >
-            <input
-              type="checkbox"
-              checked={datos.crearSonar && sonarDisponible}
-              onChange={(e) => set("crearSonar", e.target.checked)}
-              disabled={deshabilitado || !sonarDisponible}
-              className="w-4 h-4"
-              style={{ accentColor: "var(--accent)" }}
-            />
-            <span
-              className="text-sm"
-              style={{ color: sonarDisponible ? "var(--text)" : "var(--text-faint)" }}
-            >
-              Crear proyectos en SonarQube
-            </span>
-          </label>
         </div>
       </div>
 
       <div className="text-xs" style={{ color: "var(--text-faint)" }}>
-        {sonarDisponible
-          ? "El proyecto de SonarQube se crea con la key definitiva y vinculado al repositorio. El widget en Bitbucket sigue siendo manual."
-          : "Para crear proyectos en SonarQube hay que validar el token primero."}
+        Pipelines debe quedar activo para poder vincular SonarQube después.
       </div>
     </div>
   );

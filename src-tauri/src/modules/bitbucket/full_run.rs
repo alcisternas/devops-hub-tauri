@@ -13,7 +13,6 @@ use tauri::AppHandle;
 
 use super::super::eks::config::RefreshError;
 use super::super::eks::permissions::emit_progress;
-use super::super::sonar;
 use super::client::BBClient;
 use super::credentials;
 use super::repos::{self, EstadoRepo};
@@ -30,8 +29,6 @@ pub struct ConfigRun {
     pub pais: String,
     pub activar_pipelines: bool,
     pub crear_ramas: bool,
-    // Crear ademas el proyecto en SonarQube Cloud y vincularlo al repo.
-    pub crear_sonar: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,13 +42,9 @@ pub struct ResultadoRepo {
     // Advertencias de pasos que fallaron sin impedir la creacion del repo
     // (por ejemplo Pipelines). El repo existe, pero algo quedo pendiente.
     pub advertencias: Vec<String>,
-    // Key que lleva el proyecto en SonarQube.
+    // Key que tendra que llevar el proyecto en SonarQube, para la tabla del
+    // paso manual posterior.
     pub sonar_key: String,
-    // Resultado de SonarQube: None cuando no se pidio crearlo.
-    // "creado" | "ya_existia" | "error"
-    pub sonar_estado: Option<String>,
-    pub sonar_detalle: Option<String>,
-    pub sonar_bindeado: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,9 +55,6 @@ pub struct ResumenRun {
     pub omitidos: u32,
     pub con_error: u32,
     pub rama_desarrollo: String,
-    // Cuantos proyectos de SonarQube quedaron vinculados.
-    pub sonar_ok: u32,
-    pub sonar_pedido: bool,
     pub resultados: Vec<ResultadoRepo>,
 }
 
@@ -85,16 +75,6 @@ pub async fn bitbucket_crear_repos(
     // repositorios ya creados.
     let (email, token) = credentials::obtener_credenciales().await?;
     let client = BBClient::new(&email, &token)?;
-
-    // Si se va a usar SonarQube, el token se lee y el cliente se arma ANTES
-    // de tocar nada. Descubrir a mitad del lote que falta el token dejaria
-    // repositorios creados y proyectos sin crear, que es el peor estado.
-    let sonar_client = if config.crear_sonar {
-        let token_sonar = sonar::credentials::obtener_token().await?;
-        Some(sonar::client::SonarClient::new(&token_sonar)?)
-    } else {
-        None
-    };
 
     let rama_dev = repos::rama_desarrollo(&config.pais);
     let total = config.repos.len() as u32;
@@ -117,9 +97,6 @@ pub async fn bitbucket_crear_repos(
                     detalle: "El repositorio ya existe en el workspace. Se omitio.".into(),
                     advertencias: vec![],
                     sonar_key,
-                    sonar_estado: None,
-                    sonar_detalle: None,
-                    sonar_bindeado: false,
                 });
                 continue;
             }
@@ -132,9 +109,6 @@ pub async fn bitbucket_crear_repos(
                     detalle: msg,
                     advertencias: vec![],
                     sonar_key,
-                    sonar_estado: None,
-                    sonar_detalle: None,
-                    sonar_bindeado: false,
                 });
                 continue;
             }
@@ -147,8 +121,8 @@ pub async fn bitbucket_crear_repos(
 
         // ── Paso 2: crear
         emit_progress(MODULO, &app, "Creando repositorio", repo, n, total, "running");
-        let (url, repo_uuid) = match repos::crear(&client, &config.workspace, repo, &config.project_key).await {
-            Ok(par) => par,
+        let url = match repos::crear(&client, &config.workspace, repo, &config.project_key).await {
+            Ok(url) => url,
             Err(e) => {
                 emit_progress(MODULO, &app, "Error al crear", repo, n, total, "error");
                 resultados.push(ResultadoRepo {
@@ -158,9 +132,6 @@ pub async fn bitbucket_crear_repos(
                     detalle: e.mensaje,
                     advertencias: vec![],
                     sonar_key,
-                    sonar_estado: None,
-                    sonar_detalle: None,
-                    sonar_bindeado: false,
                 });
                 continue;
             }
@@ -184,10 +155,6 @@ pub async fn bitbucket_crear_repos(
                 ),
                 advertencias: vec![],
                 sonar_key,
-                // Sin commit inicial no se llega al paso de SonarQube.
-                sonar_estado: None,
-                sonar_detalle: None,
-                sonar_bindeado: false,
             });
             continue;
         }
@@ -221,36 +188,6 @@ pub async fn bitbucket_crear_repos(
             }
         }
 
-        // ── Paso 6: SonarQube. Lo que falle aca NO invalida el repositorio,
-        // que ya esta creado y es utilizable. Se reporta aparte.
-        let mut sonar_estado = None;
-        let mut sonar_detalle = None;
-        let mut sonar_bindeado = false;
-
-        if let Some(sc) = &sonar_client {
-            emit_progress(MODULO, &app, "Proyecto SonarQube", repo, n, total, "running");
-
-            if repo_uuid.is_empty() {
-                // Sin UUID no hay forma de vincular: SonarQube identifica el
-                // repositorio por ese valor, no por su nombre.
-                sonar_estado = Some("error".to_string());
-                sonar_detalle = Some(
-                    "Bitbucket no devolvio el UUID del repositorio; no se puede vincular.".into(),
-                );
-            } else {
-                let r = sonar::projects::crear_y_vincular(
-                    sc, &config.project_key, repo, &repo_uuid,
-                )
-                .await;
-                if r.estado == "error" {
-                    advertencias.push(format!("SonarQube: {}", r.detalle));
-                }
-                sonar_bindeado = r.bindeado;
-                sonar_estado = Some(r.estado);
-                sonar_detalle = Some(r.detalle);
-            }
-        }
-
         let estado_evento = if advertencias.is_empty() { "ok" } else { "error" };
         emit_progress(MODULO, &app, "Listo", repo, n, total, estado_evento);
 
@@ -265,16 +202,12 @@ pub async fn bitbucket_crear_repos(
             },
             advertencias,
             sonar_key,
-            sonar_estado,
-            sonar_detalle,
-            sonar_bindeado,
         });
     }
 
     let creados = resultados.iter().filter(|r| r.estado == "creado").count() as u32;
     let omitidos = resultados.iter().filter(|r| r.estado == "ya_existia").count() as u32;
     let con_error = resultados.iter().filter(|r| r.estado == "error").count() as u32;
-    let sonar_ok = resultados.iter().filter(|r| r.sonar_bindeado).count() as u32;
 
     Ok(ResumenRun {
         total,
@@ -282,8 +215,6 @@ pub async fn bitbucket_crear_repos(
         omitidos,
         con_error,
         rama_desarrollo: rama_dev.to_string(),
-        sonar_ok,
-        sonar_pedido: config.crear_sonar,
         resultados,
     })
 }

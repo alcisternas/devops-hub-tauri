@@ -29,9 +29,6 @@ export default function ConfirmPanel({ config, ejecutando, onConfirmar, onCancel
     "Commit inicial con .gitignore y README.md estándar",
     config.activarPipelines ? "Activar Pipelines" : null,
     config.crearRamas ? `Crear ramas ${ramaDev} y release desde master` : null,
-    config.crearSonar
-      ? `Crear el proyecto en SonarQube (${config.projectKey}_[repo]) y vincularlo al repositorio`
-      : null,
   ].filter(Boolean) as string[];
 
   return (
