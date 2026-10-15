@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 // Campos del formulario de CI/CD. Son 34 campos repartidos en cinco
 // secciones, así que tenerlos acá evita repetir la misma combinación de
@@ -51,6 +51,9 @@ export function TextField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(mayusculas ? e.target.value.toUpperCase() : e.target.value)}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         className="w-full px-3 py-2 rounded-md text-sm outline-none focus:border-[var(--accent)]"
         style={{
           background: "var(--surface-raised)",
@@ -95,6 +98,9 @@ export function TextAreaField({
         rows={rows}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         className="w-full px-3 py-2 rounded-md text-sm outline-none focus:border-[var(--accent)]"
         style={{
           background: "var(--surface-raised)",
@@ -139,6 +145,81 @@ export function Grid({ cols = 2, children }: { cols?: number; children: ReactNod
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {children}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Bloques anidados dentro de una sección
+//
+// No llevan caja propia: una caja dentro de otra caja se lee como una
+// sección nueva, que es justo lo que confunde cuando hay varias seguidas.
+// En su lugar van con una guía vertical tenue a la izquierda, que muestra
+// a qué sección pertenece el contenido.
+// ─────────────────────────────────────────────────────────────────────────
+export function SubBlock({
+  title,
+  nota,
+  children,
+}: {
+  title: string;
+  nota?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 mb-2.5">
+        <div className="text-xs font-medium" style={{ color: "var(--text)" }}>
+          {title}
+        </div>
+        {nota && (
+          <div className="text-xs" style={{ color: "var(--text-faint)" }}>
+            {nota}
+          </div>
+        )}
+      </div>
+      <div className="pl-4" style={{ borderLeft: "1px solid var(--border-strong)" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Bloque plegable anidado, para los valores que casi nunca se tocan.
+// Misma guía vertical que SubBlock, sin caja.
+export function SubCollapse({
+  title,
+  nota,
+  children,
+}: {
+  title: string;
+  nota?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button onClick={() => setOpen((o) => !o)} className="flex items-baseline gap-2 mb-2.5 text-left">
+        <span className="text-xs" style={{ color: "var(--accent)" }}>
+          {open ? "−" : "+"}
+        </span>
+        <span className="text-xs font-medium" style={{ color: "var(--text)" }}>
+          {title}
+        </span>
+        {nota && (
+          <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+            {nota}
+          </span>
+        )}
+      </button>
+      {/* Oculto con CSS: los campos siguen montados, así que lo escrito no
+          se pierde al cerrar el bloque. */}
+      <div
+        className="pl-4"
+        style={{ borderLeft: "1px solid var(--border-strong)", display: open ? "block" : "none" }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

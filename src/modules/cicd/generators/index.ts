@@ -83,3 +83,32 @@ export function buscarMarcadores(archivos: ArchivosPorRepo): Hallazgo[] {
   });
   return hallazgos;
 }
+
+// Variables que van a quedar escritas sin valor, del tipo "CLAVE=".
+//
+// No todas las líneas vacías son un problema: DEPENDENCIES_FILE_PATH queda
+// vacío a propósito en .NET, porque el nombre del .csproj cambia en cada
+// proyecto. Esas excepciones se listan para no avisar de algo correcto.
+const VACIAS_ACEPTADAS = ["DEPENDENCIES_FILE_PATH"];
+
+export function buscarVariablesVacias(archivos: ArchivosPorRepo): Hallazgo[] {
+  const hallazgos: Hallazgo[] = [];
+  Object.entries(archivos).forEach(([repo, files]) => {
+    Object.entries(files).forEach(([ruta, contenido]) => {
+      contenido.split("\n").forEach((linea) => {
+        const m = linea.match(/^([A-Z][A-Z0-9_]*)=\s*$/);
+        if (m && !VACIAS_ACEPTADAS.includes(m[1])) {
+          hallazgos.push({ repo, ruta, linea: linea.trim() });
+        }
+      });
+    });
+  });
+  return hallazgos;
+}
+
+// Todo lo que va a quedar sin resolver: marcadores más variables vacías.
+// Es la señal que importa, porque es exactamente lo que terminaría escrito
+// en el repositorio.
+export function buscarHuecos(archivos: ArchivosPorRepo): Hallazgo[] {
+  return [...buscarMarcadores(archivos), ...buscarVariablesVacias(archivos)];
+}

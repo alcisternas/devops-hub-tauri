@@ -1,105 +1,150 @@
+import { useState } from "react";
 import CollapsibleSection from "../../components/CollapsibleSection";
 import { Button, ErrorNotice, SuccessNotice } from "../../components/ui";
 import Solicitud from "./sections/Solicitud";
-import Repositorios from "./sections/Repositorios";
-import Despliegue from "./sections/Despliegue";
-import JenkinsParamsSection from "./sections/JenkinsParams";
+import ArchivosRepo from "./sections/ArchivosRepo";
+import PipelineJenkins from "./sections/PipelineJenkins";
 import Spinnaker from "./sections/Spinnaker";
-import SubnetsPanel from "./SubnetsPanel";
-import type { CicdForm, EstadoSubredes } from "./shared";
-import { esApigee, esCR, necesitaSpinnaker, parsearRepos, validar } from "./shared";
+import type { Hallazgo } from "./generators";
+import type { CatalogoSubredes, CicdForm, EstadoSubredes } from "./shared";
+import {
+  ambientesActivos,
+  contarSugeridos,
+  esApigee,
+  esCR,
+  necesitaSpinnaker,
+  parsearRepos,
+  validar,
+} from "./shared";
 
 interface Props {
   f: CicdForm;
   set: (patch: Partial<CicdForm>) => void;
   onReiniciar: () => void;
-  subredesSinMatch: string[];
+  catalogo: CatalogoSubredes;
   subnetsEstado: EstadoSubredes | null;
   subnetsCargando: boolean;
   subnetsError: string;
   subnetsTotal: number;
   onActualizarSubnets: () => void;
+  // Lo que va a quedar sin resolver en los archivos generados. Es lo que
+  // define el estado de la sección 2: no tiene campos obligatorios propios,
+  // así que lo único que importa es si algo quedaría escrito vacío o con
+  // un marcador.
+  huecos: Hallazgo[];
 }
 
-// Pantalla única con secciones plegables, en vez del asistente de pasos del
-// HTML. Dos razones: los archivos se regeneran en cada tecleo, así que el
-// orden de llenado dejó de importar; y así se puede corregir un campo del
-// primer bloque sin volver atrás tres pantallas.
+// Pantalla única con cuatro secciones, en el orden en que se llenan:
+// primero lo que sale de la solicitud, después lo que hay que dejar en el
+// repositorio, después el pipeline de Jenkins y al final Spinnaker.
 //
-// Las secciones que no aplican al flujo elegido no se muestran: Apigee no
-// tiene despliegue ni Spinnaker, y Cloud Run no tiene Spinnaker.
+// Las secciones que no aplican al flujo no se muestran: Apigee no tiene
+// Spinnaker, y Cloud Run tampoco.
 export default function FormTab({
   f,
   set,
   onReiniciar,
-  subredesSinMatch,
+  catalogo,
   subnetsEstado,
   subnetsCargando,
   subnetsError,
   subnetsTotal,
   onActualizarSubnets,
+  huecos,
 }: Props) {
   const apigee = esApigee(f);
   const faltas = validar(f);
+  // La sección 2 llega casi completa con valores sugeridos, así que decir
+  // "completa" prometería una revisión que nadie hizo. Hasta que se abre,
+  // el rótulo informa cuántos valores vienen sugeridos.
+  const [revisada, setRevisada] = useState(false);
+  const sugeridos = contarSugeridos(f);
   const repos = parsearRepos(f.reposText);
+  const envs = ambientesActivos(f);
+
+  // Estado por sección: se calcula de los campos obligatorios de cada una,
+  // para que el encabezado diga qué falta sin tener que abrirla.
+  const faltaSolicitud =
+    !f.ticket.trim() || !f.tech || !envs.length || !repos.length || (!apigee && (!f.bbKey.trim() || !f.bbName.trim()));
+  const faltaArchivos = (apigee && !f.apigeeProxyName.trim()) || huecos.length > 0;
+  const faltaJenkins = apigee ? !f.apigeeSubtype : !f.folder.trim() || !f.jfpath.trim();
+
+  const estado = (falta: boolean) =>
+    ({
+      estado: falta ? ("pendiente" as const) : ("completa" as const),
+      estadoTexto: falta ? "falta completar" : "completa",
+    });
 
   return (
-    <div className="space-y-3 pb-4">
+    <div className="space-y-4 pb-4">
       <CollapsibleSection
+        index={1}
         title="Solicitud"
-        subtitle="Ticket, tecnología, país, destino y ambientes"
+        subtitle="Ticket, tecnología, ambientes, proyectos y repositorios"
         defaultOpen
+        {...estado(faltaSolicitud)}
       >
         <Solicitud f={f} set={set} />
       </CollapsibleSection>
 
       <CollapsibleSection
-        title="Repositorios"
-        subtitle={repos.length ? `${repos.length} cargado${repos.length === 1 ? "" : "s"}` : "Ninguno todavía"}
-        defaultOpen
+        index={2}
+        estado={faltaArchivos ? "pendiente" : revisada ? "completa" : "info"}
+        estadoTexto={
+          faltaArchivos
+            ? huecos.length > 0
+              ? `${huecos.length} sin resolver`
+              : "falta completar"
+            : revisada
+              ? "revisada"
+              : `${sugeridos} valores sugeridos`
+        }
+        onPrimeraApertura={() => setRevisada(true)}
+        title="Configuración del repositorio"
+        subtitle={
+          apigee
+            ? "JenkinsParams de Apigee"
+            : esCR(f)
+              ? "JenkinsParams, service.yaml y bitbucket-pipelines.yml"
+              : "JenkinsParams, service.yaml, istio.yaml y bitbucket-pipelines.yml"
+        }
       >
-        <Repositorios f={f} set={set} />
+        <ArchivosRepo
+          f={f}
+          set={set}
+          catalogo={catalogo}
+          subnetsEstado={subnetsEstado}
+          subnetsCargando={subnetsCargando}
+          subnetsError={subnetsError}
+          subnetsTotal={subnetsTotal}
+          onActualizarSubnets={onActualizarSubnets}
+        />
       </CollapsibleSection>
 
-      {!apigee && (
-        <CollapsibleSection
-          title="Despliegue"
-          subtitle="Bitbucket, namespaces, rutas y datos de la infraestructura"
-        >
-          <Despliegue f={f} set={set} subredesSinMatch={subredesSinMatch} />
-        </CollapsibleSection>
-      )}
-
       <CollapsibleSection
-        title={apigee ? "Jenkins y JenkinsParams de Apigee" : "Jenkins y JenkinsParams"}
-        subtitle={apigee ? "Proxy, organizaciones y rutas base" : "Ubicación del pipeline y variables del archivo"}
+        index={3}
+        title="Pipeline de Jenkins"
+        subtitle="Dónde se crea el pipeline y con qué plantilla"
+        {...estado(faltaJenkins)}
       >
-        <JenkinsParamsSection f={f} set={set} />
+        <PipelineJenkins f={f} set={set} />
       </CollapsibleSection>
 
       {necesitaSpinnaker(f) && (
-        <CollapsibleSection title="Spinnaker" subtitle="Aplicaciones, pipelines y accounts">
+        <CollapsibleSection
+          index={4}
+          title="Spinnaker"
+          subtitle="Aplicaciones, pipelines y accounts"
+          estado="info"
+          estadoTexto="solo revisión"
+        >
           <Spinnaker f={f} />
         </CollapsibleSection>
       )}
 
-      {/* El panel de subredes solo tiene sentido en Cloud Run: es el único
-          service.yaml que lleva red y subred. */}
-      {esCR(f) && (
-        <CollapsibleSection title="Subredes GCP" subtitle="Origen de la red del service.yaml">
-          <SubnetsPanel
-            estado={subnetsEstado}
-            cargando={subnetsCargando}
-            error={subnetsError}
-            total={subnetsTotal}
-            onActualizar={onActualizarSubnets}
-          />
-        </CollapsibleSection>
-      )}
-
-      {/* Estado de lo que falta. No bloquea nada: los archivos se generan
-          igual y se ven en la pestaña de al lado, con los huecos a la
-          vista. Bloquear tiene sentido recién cuando haya que escribir en
+      {/* Estado general. No bloquea nada: los archivos se generan igual y
+          se ven en la pestaña de al lado, con los huecos a la vista.
+          Bloquear tiene sentido recién cuando haya que escribir en
           Bitbucket. */}
       <div className="pt-1">
         {faltas.length === 0 ? (

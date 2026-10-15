@@ -6,8 +6,11 @@
 //         (formulario y generadores de archivos) es logica pura y vive en
 //         el frontend, porque no necesita red ni sistema operativo.
 //
+// Fase B: bitbucket — subida de los archivos generados al repositorio,
+//         con verificacion previa y resolucion de conflictos.
+//
 // Fases siguientes, todavia no desarrolladas:
-//         bitbucket — subida de los archivos generados al repositorio
 //         jenkins   — lanzamiento del job que crea los pipelines
 //         spinnaker — creacion de aplicaciones y pipelines de despliegue
+pub mod bitbucket;
 pub mod subnets;

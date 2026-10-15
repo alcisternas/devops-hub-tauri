@@ -3,8 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { Button, ErrorNotice } from "../../components/ui";
 import { ConsoleProvider, useConsole } from "../clusters/ConsoleContext";
 import GlobalConsole from "../clusters/GlobalConsole";
-import { useConsolePanel } from "../../hooks/useConsolePanel";
+import { useResizablePanel } from "../../hooks/useResizablePanel";
 import CredentialsPanel from "./CredentialsPanel";
+import SonarCredentialsPanel from "./SonarCredentialsPanel";
 import RepoForm, { type DatosForm } from "./RepoForm";
 import ConfirmPanel from "./ConfirmPanel";
 import ResultsPanel from "./ResultsPanel";
@@ -19,16 +20,18 @@ const DATOS_INICIALES: DatosForm = {
   pais: "CL",
   activarPipelines: true,
   crearRamas: true,
+  crearSonar: false,
 };
 
 // El contenido vive en un componente aparte porque necesita useConsole, y
 // ese hook solo funciona dentro del ConsoleProvider que monta el exterior.
 function Contenido() {
   const { bump } = useConsole();
-  const consolePanel = useConsolePanel(320);
+  const consolePanel = useResizablePanel("devops-hub-console-height", 320);
 
   const [datos, setDatos] = useState<DatosForm>(DATOS_INICIALES);
   const [credOk, setCredOk] = useState(false);
+  const [sonarOk, setSonarOk] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [ejecutando, setEjecutando] = useState(false);
   const [resumen, setResumen] = useState<ResumenRun | null>(null);
@@ -45,6 +48,9 @@ function Contenido() {
     pais: datos.pais,
     activarPipelines: datos.activarPipelines,
     crearRamas: datos.crearRamas,
+    // Si el token de Sonar dejó de ser válido, no se manda la petición
+    // aunque la casilla haya quedado marcada de antes.
+    crearSonar: datos.crearSonar && sonarOk,
   };
 
   async function ejecutar() {
@@ -88,12 +94,18 @@ function Contenido() {
       <div className="flex-1 min-h-0 px-8 pb-4 overflow-y-auto">
         <div className="space-y-3 pb-2">
           <CredentialsPanel workspace={datos.workspace} onEstadoCambia={setCredOk} />
+          <SonarCredentialsPanel onEstadoCambia={setSonarOk} />
 
           {/* Mientras hay resultados, el formulario se oculta para no
               competir con ellos. No se desmonta: el estado sigue vivo si
               el usuario vuelve a editar. */}
           <div style={{ display: resumen ? "none" : "block" }} className="space-y-3">
-            <RepoForm datos={datos} onCambio={setDatos} deshabilitado={confirmando || ejecutando} />
+            <RepoForm
+              datos={datos}
+              onCambio={setDatos}
+              deshabilitado={confirmando || ejecutando}
+              sonarDisponible={sonarOk}
+            />
 
             {!confirmando && (
               <div className="flex items-center gap-3">
@@ -137,18 +149,12 @@ function Contenido() {
       </div>
 
       {/* Consola al fondo, redimensionable arrastrando la barra */}
-      {!consolePanel.collapsed && (
-        <div
-          onMouseDown={consolePanel.onDragStart}
-          className="h-1.5 shrink-0 cursor-row-resize resize-handle"
-          title="Arrastrar para cambiar el tamaño de la consola"
-        />
-      )}
-      <GlobalConsole
-        height={consolePanel.height}
-        collapsed={consolePanel.collapsed}
-        onToggleCollapsed={consolePanel.toggleCollapsed}
+      <div
+        onMouseDown={consolePanel.onDragStart}
+        className="h-1.5 shrink-0 cursor-row-resize resize-handle"
+        title="Arrastrar para cambiar el tamaño de la consola"
       />
+      <GlobalConsole height={consolePanel.height} />
     </div>
   );
 }

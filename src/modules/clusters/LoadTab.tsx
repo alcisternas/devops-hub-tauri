@@ -123,7 +123,6 @@ export default function LoadTab({ active }: { active: boolean }) {
     setLoadError("");
     try {
       await invoke("load_selected_clusters", { selections, mode });
-      setSelectedKeys(new Set());
     } catch (err) {
       setLoadError(parseErr(err));
     } finally {
@@ -173,6 +172,9 @@ export default function LoadTab({ active }: { active: boolean }) {
                 </svg>
                 <input
                   type="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="Buscar por cuenta, cluster o rol…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}

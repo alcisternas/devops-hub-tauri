@@ -45,6 +45,11 @@ export default function ResultsPanel({ resumen }: { resumen: ResumenRun }) {
               {resumen.conError} con error
             </div>
           )}
+          {resumen.sonarPedido && (
+            <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+              {resumen.sonarOk} vinculados a SonarQube
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -84,6 +89,20 @@ export default function ResultsPanel({ resumen }: { resumen: ResumenRun }) {
                 </div>
               )}
 
+              {/* Resultado de SonarQube, cuando se pidió. Va en su propia
+                  línea porque es un sistema distinto: el repositorio puede
+                  estar perfecto y el proyecto de análisis haber fallado. */}
+              {r.sonarEstado && (
+                <div
+                  className="text-xs mt-1 ml-3.5"
+                  style={{
+                    color: r.sonarBindeado ? "var(--text-muted)" : "var(--fail)",
+                  }}
+                >
+                  SonarQube — {r.sonarDetalle}
+                </div>
+              )}
+
               {/* Advertencias: el repositorio existe y sirve, pero algún
                   paso posterior quedó pendiente y hay que completarlo a mano. */}
               {r.advertencias.length > 0 && (
@@ -111,17 +130,27 @@ export default function ResultsPanel({ resumen }: { resumen: ResumenRun }) {
         >
           <div className="space-y-4">
             <div className="space-y-2 text-xs" style={{ color: "var(--text)" }}>
-              <div>
-                En el repositorio: Settings → SonarQube Cloud → Settings → Log in with Bitbucket →
-                activar "Show repository overview widget" → Save
-              </div>
-              <div>
-                En SonarQube Cloud: "+" → Analyze new project → organización Banco Ripley → buscar
-                el repositorio → Set Up → Create project
-              </div>
-              <div>
-                Corregir la project key: Administración → Update key, usando la key de la tabla.
-              </div>
+              {resumen.sonarPedido ? (
+                <div>
+                  Los proyectos ya fueron creados y vinculados. Solo falta activar el widget en
+                  cada repositorio: Settings → SonarQube Cloud → Settings → Log in with Bitbucket →
+                  marcar "Show repository overview widget" → Save
+                </div>
+              ) : (
+                <>
+                  <div>
+                    En el repositorio: Settings → SonarQube Cloud → Settings → Log in with Bitbucket
+                    → activar "Show repository overview widget" → Save
+                  </div>
+                  <div>
+                    En SonarQube Cloud: "+" → Analyze new project → organización Banco Ripley →
+                    buscar el repositorio → Set Up → Create project
+                  </div>
+                  <div>
+                    Corregir la project key: Administración → Update key, usando la key de la tabla.
+                  </div>
+                </>
+              )}
             </div>
 
             <div>

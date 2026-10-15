@@ -2,10 +2,10 @@ use std::process::Command;
 
 mod modules;
 use modules::bitbucket;
-use modules::cicd;
 use modules::eks;
 use modules::gke;
 use modules::load;
+use modules::sonar;
 use modules::system;
 
 // Comando genérico para ejecutar programas del sistema operativo (aws, gcloud, kubectl, etc.)
@@ -52,9 +52,10 @@ pub fn run() {
             bitbucket::credentials::bitbucket_cred_save,
             bitbucket::credentials::bitbucket_cred_delete,
             bitbucket::full_run::bitbucket_crear_repos,
-            // ── CI/CD Automation (v0.4.0) ──
-            cicd::subnets::cicd_subnets_leer,
-            cicd::subnets::cicd_subnets_actualizar
+            // ── SonarQube Cloud (v0.4.0) ──
+            sonar::credentials::sonar_cred_status,
+            sonar::credentials::sonar_cred_save,
+            sonar::credentials::sonar_cred_delete
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar la aplicación Tauri");

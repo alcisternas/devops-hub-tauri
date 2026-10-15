@@ -29,16 +29,31 @@ export function buildJenkinsParams(d: CicdData): string {
       prod: d.gcpProd,
     };
 
-    // Un bloque de tres variables por ambiente. El Project ID y el Service
-    // ID son el mismo valor: el proyecto GCP en minúsculas.
+    // Un bloque de tres variables por ambiente, y las tres salen de
+    // lugares distintos. Esto costó dos fallos de pipeline, así que vale
+    // tenerlo escrito:
+    //
+    //   SERVICE_ACCOUNT_NAME  el "client_email" del JSON de la credencial
+    //                         guardada en Jenkins. Es una cuenta de
+    //                         DevOps y lleva "devops" en el nombre. No es
+    //                         la cuenta de servicio del proyecto.
+    //   SERVICE_ID            el ID de esa credencial en Jenkins, tal cual
+    //                         está registrado. Algunos llevan el prefijo
+    //                         "gcp-" y otros no, así que no se deriva.
+    //   PROJECT_ID            el proyecto de GCP en minúsculas. Este sí
+    //                         sale del formulario.
+    //
+    // Los dos primeros quedan vacíos si no se completaron: un valor
+    // inventado que parece correcto es peor que uno ausente, porque el
+    // pipeline falla recién al autenticar.
     const crLines = d.envs
       .map((env) => {
         const fallback = (gcp[env.key] || "").toLowerCase();
         const s = ENV_SFX[env.key] || env.key.toUpperCase();
         const p = (d.crProjId && d.crProjId[env.key]) || fallback;
-        const sa =
-          (d.crSA && d.crSA[env.key]) || `devops-user@${fallback}.iam.gserviceaccount.com`;
-        return `\nSERVICE_ACCOUNT_NAME_${s}=${sa}\nSERVICE_ID_${s}=${p}\nPROJECT_ID_${s}=${p}`;
+        const sa = (d.crSA && d.crSA[env.key]) || "";
+        const svc = (d.crServiceId && d.crServiceId[env.key]) || "";
+        return `\nSERVICE_ACCOUNT_NAME_${s}=${sa}\nSERVICE_ID_${s}=${svc}\nPROJECT_ID_${s}=${p}`;
       })
       .join("");
 

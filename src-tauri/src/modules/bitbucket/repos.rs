@@ -8,7 +8,7 @@
 use serde_json::json;
 
 use super::super::eks::config::RefreshError;
-use super::client::{mensaje_error, url_repo, BBClient};
+use super::client::{mensaje_error, url_repo, uuid_repo, BBClient};
 
 // Contenido estandar del banco para el commit inicial. Trasladado textual
 // desde la herramienta anterior, donde fue confirmado contra un repositorio
@@ -118,12 +118,15 @@ pub async fn verificar(
 
 // Configuracion estandar del equipo: privado, sin forks, sin issues ni wiki,
 // rama principal master. Misma que usaba la herramienta anterior.
+// Devuelve (url, uuid). El UUID se captura ACA, de la respuesta de creacion,
+// en vez de pedirlo despues con otra llamada: SonarQube lo necesita para
+// vincular el proyecto y ya viene en el cuerpo.
 pub async fn crear(
     client: &BBClient,
     workspace: &str,
     repo: &str,
     project_key: &str,
-) -> Result<String, RefreshError> {
+) -> Result<(String, String), RefreshError> {
     let payload = json!({
         "scm": "git",
         "is_private": true,
@@ -139,9 +142,10 @@ pub async fn crear(
         .await?;
 
     if codigo == 200 || codigo == 201 {
-        return Ok(url_repo(&cuerpo).unwrap_or_else(|| {
-            format!("https://bitbucket.org/{}/{}", workspace, repo)
-        }));
+        let url = url_repo(&cuerpo)
+            .unwrap_or_else(|| format!("https://bitbucket.org/{}/{}", workspace, repo));
+        let uuid = uuid_repo(&cuerpo).unwrap_or_default();
+        return Ok((url, uuid));
     }
 
     // Caso frecuente y con causa concreta: vale la pena nombrarlo en vez de

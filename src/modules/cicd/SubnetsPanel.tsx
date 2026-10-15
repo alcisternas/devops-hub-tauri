@@ -19,8 +19,11 @@ function fecha(iso: string | null): string {
 //
 // El módulo abre con lo que haya en caché, o con el catálogo incluido en la
 // aplicación si es la primera vez. La consulta en vivo es manual porque
-// tarda y puede pedir que renueves la sesión de gcloud: hacerla sola al
-// abrir el módulo frenaría el formulario sin que nadie la haya pedido.
+// tarda y puede pedir iniciar sesión en gcloud: hacerla sola al abrir el
+// módulo frenaría el formulario sin que nadie la haya pedido.
+//
+// El detalle de los errores NO se muestra acá: va a la consola global, que
+// tiene el espacio para leerlo. En este panel queda solo qué falló.
 export default function SubnetsPanel({ estado, cargando, error, total, onActualizar }: Props) {
   const origen = estado?.origen ?? "";
 
@@ -41,6 +44,11 @@ export default function SubnetsPanel({ estado, cargando, error, total, onActuali
           <MetaLine>
             {descripcion} Última consulta en vivo: {fecha(estado?.actualizado ?? null)}
           </MetaLine>
+          {estado?.cuenta && (
+            <MetaLine>
+              Se consulta con la cuenta {estado.cuenta}, la misma configurada para GCP en el hub.
+            </MetaLine>
+          )}
         </div>
         <Button variant="secondary" onClick={onActualizar} disabled={cargando}>
           {cargando ? "Consultando…" : "Actualizar en vivo"}
@@ -48,15 +56,16 @@ export default function SubnetsPanel({ estado, cargando, error, total, onActuali
       </div>
 
       <div className="text-xs leading-relaxed" style={{ color: "var(--text-faint)" }}>
-        La consulta usa gcloud contra los tres proyectos de networking, con la sesión que ya tengas
-        abierta. Sirve cuando el proyecto es nuevo y su subred todavía no figura en el listado.
+        La consulta usa gcloud contra los tres proyectos de networking. Si la sesión está vencida,
+        se renueva antes de consultar. Sirve cuando el proyecto es nuevo y su subred todavía no
+        figura en el listado.
       </div>
 
       {/* Un proyecto que falla no invalida los otros dos: lo consultado se
-          guarda igual y acá se dice qué quedó sin actualizar. */}
+          guarda igual y acá se dice cuál quedó sin actualizar. */}
       {estado?.errores && estado.errores.length > 0 && (
         <WarningNotice>
-          Quedaron proyectos sin actualizar: {estado.errores.join(" · ")}
+          Sin actualizar: {estado.errores.join(", ")}. El detalle está en la consola.
         </WarningNotice>
       )}
 

@@ -1,5 +1,6 @@
 import type { CicdForm } from "../shared";
 import { collectData, imagenSpinnaker, necesitaSpinnaker } from "../shared";
+import { SubBlock } from "./fields";
 
 interface Props {
   f: CicdForm;
@@ -32,11 +33,8 @@ export default function Spinnaker({ f }: Props) {
   ];
 
   return (
+    <SubBlock title="Lo que se va a crear" nota="la creación llega en una fase siguiente">
     <div className="space-y-4">
-      <div className="text-xs leading-relaxed" style={{ color: "var(--text-faint)" }}>
-        Resumen de lo que se va a crear en Spinnaker. La creación todavía no está en el hub: por
-        ahora estos datos sirven para revisar que la configuración esté completa.
-      </div>
 
       <div className="space-y-2">
         {filas.map((r) => (
@@ -86,5 +84,6 @@ export default function Spinnaker({ f }: Props) {
         </div>
       </div>
     </div>
+    </SubBlock>
   );
 }

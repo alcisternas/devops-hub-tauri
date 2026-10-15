@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useLocation } from "react-router-dom";
 import { ConsoleProvider } from "../clusters/ConsoleContext";
 import GlobalConsole from "../clusters/GlobalConsole";
 import { useConsolePanel } from "../../hooks/useConsolePanel";
@@ -7,18 +8,9 @@ import FormTab from "./FormTab";
 import FilesTab from "./FilesTab";
 import JenkinsTab from "./JenkinsTab";
 import { SUBNETS_SEED } from "./data/subnets-seed";
-import { buscarMarcadores, collectArchivos } from "./generators";
+import { buscarHuecos, collectArchivos } from "./generators";
 import type { CatalogoSubredes, CicdForm, EstadoSubredes } from "./shared";
-import {
-  aplicarSugerencias,
-  collectData,
-  esCR,
-  extractProjectKey,
-  findSubnet,
-  formVacio,
-  parseErr,
-  ramaDesarrollo,
-} from "./shared";
+import { aplicarSugerencias, collectData, formVacio, parseErr, ramaDesarrollo } from "./shared";
 
 type TabId = "formulario" | "archivos" | "jenkins";
 
@@ -26,6 +18,10 @@ export default function Cicd() {
   const [f, setF] = useState<CicdForm>(formVacio);
   const [tab, setTab] = useState<TabId>("formulario");
   const consolePanel = useConsolePanel(280);
+  // El módulo queda montado aunque no esté a la vista (App.tsx lo oculta
+  // con CSS), así que la pestaña visible no alcanza para saber si el
+  // usuario está acá.
+  const visible = useLocation().pathname === "/cicd";
 
   const [subnets, setSubnets] = useState<EstadoSubredes | null>(null);
   const [subnetsCargando, setSubnetsCargando] = useState(false);
@@ -77,16 +73,8 @@ export default function Cicd() {
 
   const d = useMemo(() => collectData(f), [f]);
   const archivos = useMemo(() => collectArchivos(d, catalogo), [d, catalogo]);
-  const hallazgos = useMemo(() => buscarMarcadores(archivos), [archivos]);
-
-  // Ambientes de Cloud Run que no encontraron subred, para avisarlo en el
-  // formulario y no solo dentro del YAML.
-  const subredesSinMatch = useMemo(() => {
-    if (!esCR(f)) return [];
-    const projKey = extractProjectKey(f.gcp.dev || f.gcp.release || f.gcp.prod || "");
-    if (!projKey) return [];
-    return d.envs.filter((env) => !findSubnet(catalogo, projKey, env.key)).map((env) => env.label);
-  }, [f, d, catalogo]);
+  // Marcadores PENDIENTE más variables que quedarían escritas vacías.
+  const huecos = useMemo(() => buscarHuecos(archivos), [archivos]);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "formulario", label: "Formulario" },
@@ -133,19 +121,22 @@ export default function Cicd() {
               f={f}
               set={set}
               onReiniciar={() => setF(formVacio())}
-              subredesSinMatch={subredesSinMatch}
+              catalogo={catalogo}
               subnetsEstado={subnets}
               subnetsCargando={subnetsCargando}
               subnetsError={subnetsError}
               subnetsTotal={subnetsTotal}
               onActualizarSubnets={actualizarSubnets}
+              huecos={huecos}
             />
           </div>
           <div style={{ display: tab === "archivos" ? "block" : "none" }}>
             <FilesTab
               archivos={archivos}
-              hallazgos={hallazgos}
+              hallazgos={huecos}
               ramaDestino={ramaDesarrollo(f.country)}
+              ticket={f.ticket}
+              activo={visible && tab === "archivos"}
             />
           </div>
           <div style={{ display: tab === "jenkins" ? "block" : "none" }}>

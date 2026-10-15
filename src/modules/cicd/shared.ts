@@ -79,9 +79,11 @@ export interface EstadoSubredes {
   actualizado: string | null;
   catalogo: CatalogoSubredes;
   detalle: string;
-  // Un mensaje por proyecto que falló. Vacío no significa que haya datos:
-  // significa que ningún proyecto dio error.
+  // Nombre de los proyectos que fallaron. Vacío no significa que haya
+  // datos: significa que ningún proyecto dio error.
   errores: string[];
+  // Cuenta de gcloud con la que se consulta.
+  cuenta: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -92,6 +94,50 @@ export interface ApigeeEnvData {
   env: string;
   svc: string;
   sa: string;
+}
+
+// Campos que se calculan a partir de otro dato del formulario.
+//
+// Todos siguen la misma regla: mientras nadie los edite, el valor sigue a
+// su origen y se recalcula cuando el origen cambia. Apenas el usuario
+// escribe en el campo, deja de seguirlo para siempre.
+//
+// Esto corrige un problema concreto: antes la sugerencia se escribía
+// apenas el campo estaba vacío, o sea con la primera letra tecleada en el
+// proyecto. Si se escribía "T", quedaba "gcr-t" congelado, porque el campo
+// ya tenía contenido y nunca se volvía a calcular.
+export type CampoDerivado =
+  // siguen al proyecto o cluster de DEV
+  | "gcp.release"
+  | "gcp.prod"
+  | "gke.release"
+  | "gke.prod"
+  // siguen al proyecto GCP
+  | "k8s.registryName"
+  | "cr.registryName"
+  | "cr.projId.dev"
+  | "cr.projId.release"
+  | "cr.projId.prod"
+  | "cr.sa.dev"
+  | "cr.sa.release"
+  | "cr.sa.prod"
+  // siguen a la tecnología o la infraestructura
+  | "jfpath"
+  | "depsFile"
+  | "bbpipeImage"
+  // siguen al país o a la organización de Apigee
+  | "apigee.dev"
+  | "apigee.release"
+  | "apigee.prod";
+
+// Devuelve el patch del formulario marcando el campo como editado a mano,
+// para que deje de seguir a su origen.
+export function patchTocado(
+  f: CicdForm,
+  patch: Partial<CicdForm>,
+  clave: CampoDerivado
+): Partial<CicdForm> {
+  return { ...patch, tocados: { ...f.tocados, [clave]: true } };
 }
 
 export interface CicdForm {
@@ -142,6 +188,13 @@ export interface CicdForm {
   crVersion: string;
   crScanExclude: string;
   crProjId: Record<EnvKey, string>;
+  // ID de la credencial registrada en Jenkins. No se puede derivar del
+  // proyecto: en Jenkins conviven credenciales con prefijo "gcp-" y sin
+  // él para proyectos del mismo tipo, así que el valor se toma de ahí.
+  crServiceId: Record<EnvKey, string>;
+  // Cuenta de servicio de DevOps: la que está dentro del JSON guardado en
+  // Jenkins, y siempre lleva "devops" en el nombre. Es distinta de la
+  // cuenta de servicio del proyecto que usa el service.yaml de Kubernetes.
   crSA: Record<EnvKey, string>;
 
   bbpipeImage: string;
@@ -150,6 +203,9 @@ export interface CicdForm {
   apigeeAppIntegration: boolean;
   apigeeBasepath: Record<EnvKey, string>;
   apigeeEnv: Record<EnvKey, ApigeeEnvData>;
+
+  // Campos derivados que el usuario editó a mano.
+  tocados: Partial<Record<CampoDerivado, boolean>>;
 }
 
 const envRecord = (v: string): Record<EnvKey, string> => ({ dev: v, release: v, prod: v });
@@ -200,6 +256,7 @@ export function formVacio(): CicdForm {
     crVersion: "",
     crScanExclude: "",
     crProjId: envRecord(""),
+    crServiceId: envRecord(""),
     crSA: envRecord(""),
 
     bbpipeImage: "",
@@ -212,6 +269,8 @@ export function formVacio(): CicdForm {
       release: { org: "", env: "", svc: "", sa: "" },
       prod: { org: "", env: "", svc: "", sa: "" },
     },
+
+    tocados: {},
   };
 }
 
@@ -274,6 +333,7 @@ export interface CicdData {
   crRegistryName: string;
   crDockerfile: string;
   crProjId: Record<EnvKey, string>;
+  crServiceId: Record<EnvKey, string>;
   crSA: Record<EnvKey, string>;
 
   bbpipeImage: string;
@@ -301,18 +361,36 @@ export function ambientesActivos(f: CicdForm): EnvItem[] {
   return ENV_KEYS.filter((k) => f.ambientes[k]).map((k) => ({ key: k, label: ENV_LABEL[k] }));
 }
 
-// Una línea del textarea = un repositorio. Máximo 5: las líneas de más se
-// descartan, y el formulario lo avisa en pantalla.
+// Una línea del textarea = un repositorio. Sin límite de cantidad: el tope
+// de 5 que traía la herramienta anterior se quitó.
+//
+// Los nombres repetidos se eliminan. Dos líneas iguales no tienen ningún
+// sentido (serían los mismos archivos escritos dos veces en el mismo
+// repositorio) y además rompían la lista de prefijos URI: mientras se
+// escribe hay momentos en que varias líneas coinciden, y con nombres
+// repetidos la lista no podía emparejar las filas viejas con las nuevas.
 export function parsearRepos(texto: string): string[] {
-  return texto
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    .slice(0, 5);
+  const vistos = new Set<string>();
+  const out: string[] = [];
+  for (const linea of texto.split("\n")) {
+    const nombre = linea.trim();
+    if (!nombre || vistos.has(nombre)) continue;
+    vistos.add(nombre);
+    out.push(nombre);
+  }
+  return out;
 }
 
-export function totalLineasRepos(texto: string): number {
-  return texto.split("\n").filter((l) => l.trim().length > 0).length;
+// Cuenta solo las líneas con contenido, repetidas incluidas: sirve para
+// avisar que se pasó del máximo o que hay duplicados.
+export function lineasRepetidas(texto: string): string[] {
+  const cuenta = new Map<string, number>();
+  texto
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .forEach((n) => cuenta.set(n, (cuenta.get(n) || 0) + 1));
+  return [...cuenta.entries()].filter(([, n]) => n > 1).map(([nombre]) => nombre);
 }
 
 // BR-GCP-VENTAS-PPFF-DEV → ventas-ppff
@@ -500,6 +578,7 @@ export function collectData(f: CicdForm): CicdData {
     crRegistryName: f.crRegistryName,
     crDockerfile: f.crDockerfile || "Dockerfile",
     crProjId: f.crProjId,
+    crServiceId: f.crServiceId,
     crSA: f.crSA,
 
     bbpipeImage: f.bbpipeImage,
@@ -582,6 +661,47 @@ export function parseErr(err: unknown): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Derivación del valor de los otros ambientes a partir de DEV
+//
+// El proyecto y el cluster suelen ser el mismo nombre con el ambiente
+// cambiado, así que escribir DEV alcanza para los tres. Las dos formas son
+// distintas y por eso hay dos funciones:
+//
+//   proyecto → el ambiente está al final:  BR-GCP-VENTAS-PPFF-DEV
+//   cluster  → el ambiente va en el medio: gke-br-dev-core-ventas-ppff-01
+//
+// Si el valor de DEV no tiene la forma esperada se devuelve cadena vacía y
+// no se completa nada: preferible dejar el campo en blanco a inventar un
+// nombre que no existe.
+// ─────────────────────────────────────────────────────────────────────────
+const SUFIJO_ENV: Record<EnvKey, string> = { dev: "dev", release: "pp", prod: "prod" };
+
+// Conserva el formato del original: si venía en mayúsculas, el reemplazo
+// también va en mayúsculas.
+function igualarCaja(modelo: string, texto: string): string {
+  return modelo === modelo.toUpperCase() ? texto.toUpperCase() : texto;
+}
+
+export function derivarProyecto(proyectoDev: string, env: EnvKey): string {
+  const valor = proyectoDev.trim();
+  if (!valor || env === "dev") return "";
+  const m = valor.match(/^(.*)-(dev)$/i);
+  if (!m) return "";
+  return `${m[1]}-${igualarCaja(m[2], SUFIJO_ENV[env])}`;
+}
+
+export function derivarCluster(clusterDev: string, env: EnvKey): string {
+  const valor = clusterDev.trim();
+  if (!valor || env === "dev") return "";
+  // Solo el primer segmento que sea exactamente "dev" entre guiones: así
+  // un nombre que además contenga "dev" en otra parte (por ejemplo
+  // "devops") no se toca.
+  const m = valor.match(/^(.*?-)(dev)(-.*)$/i);
+  if (!m) return "";
+  return `${m[1]}${igualarCaja(m[2], SUFIJO_ENV[env])}${m[3]}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Sugerencias automáticas
 //
 // Equivale a lo que hacía la herramienta HTML cuando entrabas a cada paso:
@@ -594,92 +714,220 @@ export function parseErr(err: unknown): string {
 // copia nueva siempre dejaría a React renderizando sin parar.
 // ─────────────────────────────────────────────────────────────────────────
 export function aplicarSugerencias(f: CicdForm): CicdForm {
-  const cambios: Partial<CicdForm> = {};
-  const projKey = extractProjectKey(f.gcp.dev || f.gcp.release || f.gcp.prod || "");
-  const apigee = esApigee(f);
+  const borrador: CicdForm = {
+    ...f,
+    gcp: { ...f.gcp },
+    gke: { ...f.gke },
+    crProjId: { ...f.crProjId },
+    crSA: { ...f.crSA },
+    apigeeEnv: {
+      dev: { ...f.apigeeEnv.dev },
+      release: { ...f.apigeeEnv.release },
+      prod: { ...f.apigeeEnv.prod },
+    },
+  };
+  let cambio = false;
 
-  // Jenkinsfile: Cloud Run usa siempre el mismo. En Kubernetes solo se
-  // sugiere cuando la tecnología tiene una única opción; Node.js tiene seis
-  // y ahí la elección es del usuario.
-  if (!f.jfpath && !apigee) {
-    if (esCR(f)) {
-      cambios.jfpath = JF_CR;
-    } else if (esK8s(f)) {
-      const opts = JF_K8S[f.tech] || [];
-      if (opts.length === 1) cambios.jfpath = opts[0].p;
+  // Escribe la sugerencia solo si el campo no fue editado a mano. Si el
+  // origen cambia, el valor se recalcula: terminar de escribir el nombre
+  // del proyecto corrige todos los derivados de una vez.
+  const seguir = (clave: CampoDerivado, actual: string, sugerido: string, aplicar: (v: string) => void) => {
+    if (f.tocados[clave]) return;
+    if (!sugerido || sugerido === actual) return;
+    aplicar(sugerido);
+    cambio = true;
+  };
+
+  // Campos sin origen variable: valor por defecto una sola vez, cuando
+  // están vacíos. No hace falta que sigan a nada.
+  const porDefecto = (actual: string, valor: string, aplicar: (v: string) => void) => {
+    if (actual || !valor) return;
+    aplicar(valor);
+    cambio = true;
+  };
+
+  const apigee = esApigee(f);
+  const projKey = extractProjectKey(f.gcp.dev || f.gcp.release || f.gcp.prod || "");
+
+  // ── Proyecto y cluster de RELEASE y PROD siguen a DEV ──
+  (["release", "prod"] as EnvKey[]).forEach((env) => {
+    seguir(`gcp.${env}` as CampoDerivado, f.gcp[env], derivarProyecto(f.gcp.dev, env), (v) => {
+      borrador.gcp[env] = v;
+    });
+    seguir(`gke.${env}` as CampoDerivado, f.gke[env], derivarCluster(f.gke.dev, env), (v) => {
+      borrador.gke[env] = v;
+    });
+  });
+
+  // ── Jenkinsfile: Cloud Run usa siempre el mismo; en Kubernetes solo se
+  //    sugiere cuando la tecnología tiene una única plantilla ──
+  if (!apigee) {
+    const opts = JF_K8S[f.tech] || [];
+    const validos = esCR(f) ? [JF_CR] : opts.map((o) => o.p);
+    const sugerido = esCR(f) ? JF_CR : esK8s(f) && opts.length === 1 ? opts[0].p : "";
+    seguir("jfpath", f.jfpath, sugerido, (v) => {
+      borrador.jfpath = v;
+    });
+    // Node.js tiene seis plantillas, así que no hay sugerencia. Pero si
+    // venía elegida la de otra tecnología, dejarla sería peor que vaciar:
+    // el pipeline se crearía con la plantilla equivocada.
+    if (!f.tocados.jfpath && !sugerido && f.jfpath && !validos.includes(f.jfpath)) {
+      borrador.jfpath = "";
+      cambio = true;
     }
   }
 
-  if (!f.bbpipeImage && BBPIPE_IMAGE[f.tech]) cambios.bbpipeImage = BBPIPE_IMAGE[f.tech];
+  seguir("bbpipeImage", f.bbpipeImage, BBPIPE_IMAGE[f.tech] || "", (v) => {
+    borrador.bbpipeImage = v;
+  });
 
   if (esK8s(f) && !apigee) {
-    if (!f.k8sRegistryName && esGCP(f) && projKey) cambios.k8sRegistryName = `gcr-${projKey}`;
-    if (!f.k8sDockerfile) cambios.k8sDockerfile = "Dockerfile";
-    if (!f.k8sScanCoverage) cambios.k8sScanCoverage = "coverage/**/";
-    if (!f.k8sDepsFile && DEPS_FILE[f.tech]) cambios.k8sDepsFile = DEPS_FILE[f.tech];
-    if (!f.k8sCaDomain) cambios.k8sCaDomain = "br";
-    if (!f.k8sCaRepo) cambios.k8sCaRepo = "br-devops-codeartifact-01";
-    if (!f.k8sAwsOwner && esAWS(f)) cambios.k8sAwsOwner = "063003577365";
+    seguir("k8s.registryName", f.k8sRegistryName, esGCP(f) && projKey ? `gcr-${projKey}` : "", (v) => {
+      borrador.k8sRegistryName = v;
+    });
+    seguir("depsFile", f.k8sDepsFile, DEPS_FILE[f.tech] || "", (v) => {
+      borrador.k8sDepsFile = v;
+    });
+    porDefecto(f.k8sDockerfile, "Dockerfile", (v) => {
+      borrador.k8sDockerfile = v;
+    });
+    porDefecto(f.k8sScanCoverage, "coverage/**/", (v) => {
+      borrador.k8sScanCoverage = v;
+    });
+    porDefecto(f.k8sCaDomain, "br", (v) => {
+      borrador.k8sCaDomain = v;
+    });
+    porDefecto(f.k8sCaRepo, "br-devops-codeartifact-01", (v) => {
+      borrador.k8sCaRepo = v;
+    });
+    if (esAWS(f)) {
+      porDefecto(f.k8sAwsOwner, "063003577365", (v) => {
+        borrador.k8sAwsOwner = v;
+      });
+    }
   }
 
   if (esCR(f)) {
-    if (!f.crRegistryName && projKey) cambios.crRegistryName = `gcr-${projKey}`;
-    if (!f.crDockerfile) cambios.crDockerfile = "Dockerfile";
-    if (!f.crRegion) cambios.crRegion = "southamerica-west1";
-    if (!f.crVersion) cambios.crVersion = "1.0.0";
+    seguir("cr.registryName", f.crRegistryName, projKey ? `gcr-${projKey}` : "", (v) => {
+      borrador.crRegistryName = v;
+    });
+    porDefecto(f.crDockerfile, "Dockerfile", (v) => {
+      borrador.crDockerfile = v;
+    });
+    porDefecto(f.crRegion, "southamerica-west1", (v) => {
+      borrador.crRegion = v;
+    });
+    porDefecto(f.crVersion, "1.0.0", (v) => {
+      borrador.crVersion = v;
+    });
 
     // El Project ID y el Service ID son el mismo valor: el proyecto GCP en
     // minúsculas. La cuenta de servicio sigue el patrón del equipo.
-    const projId = { ...f.crProjId };
-    const sa = { ...f.crSA };
-    let tocoProj = false;
-    let tocoSA = false;
     ambientesActivos(f).forEach((env) => {
-      const proyecto = (f.gcp[env.key] || "").toLowerCase();
+      const proyecto = (borrador.gcp[env.key] || "").toLowerCase();
       if (!proyecto) return;
-      if (!projId[env.key]) {
-        projId[env.key] = proyecto;
-        tocoProj = true;
-      }
-      if (!sa[env.key]) {
-        sa[env.key] = `devops-user@${proyecto}.iam.gserviceaccount.com`;
-        tocoSA = true;
-      }
+      seguir(`cr.projId.${env.key}` as CampoDerivado, f.crProjId[env.key], proyecto, (v) => {
+        borrador.crProjId[env.key] = v;
+      });
+      // SERVICE_ACCOUNT_NAME y SERVICE_ID no se sugieren: ambos salen de
+      // la credencial registrada en Jenkins y no siguen ningún patrón
+      // derivable del proyecto. El patrón que había antes generaba un
+      // correo inexistente y el pipeline fallaba al autenticar.
     });
-    if (tocoProj) cambios.crProjId = projId;
-    if (tocoSA) cambios.crSA = sa;
   }
 
   if (apigee) {
-    // Chile tiene valores fijos confirmados. Perú todavía no tiene datos,
-    // así que sus campos quedan vacíos y se completan a mano.
-    const envData = { dev: { ...f.apigeeEnv.dev }, release: { ...f.apigeeEnv.release }, prod: { ...f.apigeeEnv.prod } };
-    let toco = false;
+    // Chile tiene valores fijos confirmados y siguen al país: cambiar de
+    // país recalcula los tres. Perú todavía no tiene datos, así que sus
+    // campos quedan vacíos y se completan a mano.
     ENV_KEYS.forEach((k) => {
       const fijo = f.country === "CL" ? APIGEE_FIXED_CL[k] : undefined;
-      if (fijo) {
-        if (!envData[k].org) {
-          envData[k].org = fijo.org;
-          toco = true;
-        }
-        if (!envData[k].env) {
-          envData[k].env = fijo.env;
-          toco = true;
-        }
-        if (!envData[k].svc) {
-          envData[k].svc = fijo.svc;
-          toco = true;
-        }
-      }
-      // La cuenta de servicio solo aplica con la integración activa, y se
-      // deriva de la organización de ese mismo ambiente.
-      if (f.apigeeAppIntegration && !envData[k].sa && envData[k].org) {
-        envData[k].sa = `sa-application-integration-inv@${envData[k].org}.iam.gserviceaccount.com`;
-        toco = true;
-      }
+      const actual = f.apigeeEnv[k];
+      const sa =
+        f.apigeeAppIntegration && (fijo?.org || actual.org)
+          ? `sa-application-integration-inv@${fijo?.org || actual.org}.iam.gserviceaccount.com`
+          : "";
+      const sugerido = JSON.stringify({
+        org: fijo?.org || actual.org,
+        env: fijo?.env || actual.env,
+        svc: fijo?.svc || actual.svc,
+        sa: sa || actual.sa,
+      });
+      seguir(`apigee.${k}` as CampoDerivado, JSON.stringify(actual), sugerido, (v) => {
+        borrador.apigeeEnv[k] = JSON.parse(v);
+      });
     });
-    if (toco) cambios.apigeeEnv = envData;
   }
 
-  return Object.keys(cambios).length ? { ...f, ...cambios } : f;
+  return cambio ? borrador : f;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Subida a Bitbucket — tipos espejo de lo que define Rust
+// ─────────────────────────────────────────────────────────────────────────
+
+// El workspace no cambia: el equipo trabaja siempre sobre el mismo. Es el
+// mismo valor que usa el módulo de creación de repositorios.
+export const WORKSPACE = "banco_ripley";
+
+export type Accion = "sobrescribir" | "renombrar" | "omitir";
+
+export interface ArchivoRepo {
+  ruta: string;
+  contenido: string;
+  accion: Accion;
+}
+
+export interface RepoArchivos {
+  repo: string;
+  archivos: ArchivoRepo[];
+}
+
+export interface VerificacionRepo {
+  repo: string;
+  repoExiste: boolean;
+  ramaExiste: boolean;
+  conflictos: string[];
+  error: string | null;
+}
+
+export interface ResultadoRepo {
+  repo: string;
+  ok: boolean;
+  url: string | null;
+  subidos: string[];
+  // Pares (ruta pedida, ruta efectiva) de los archivos renombrados.
+  renombrados: [string, string][];
+  omitidos: string[];
+  error: string | null;
+}
+
+// Mensaje de commit, sin tildes: es el mismo texto que usaba el flujo
+// anterior, y así el historial de los repositorios queda consistente.
+export function mensajeCommit(ticket: string): string {
+  return `feat: agregar configuracion CI/CD [${ticket.trim() || "SIN-TICKET"}]`;
+}
+
+// Cuántos campos trae completados la herramienta sin intervención del
+// usuario. Sirve para el rótulo de la sección: informar que hay valores
+// sugeridos es honesto, decir "completa" sin que nadie los haya mirado no.
+export function contarSugeridos(f: CicdForm): number {
+  const derivados: [CampoDerivado, string][] = [
+    ["gcp.release", f.gcp.release],
+    ["gcp.prod", f.gcp.prod],
+    ["gke.release", f.gke.release],
+    ["gke.prod", f.gke.prod],
+    ["jfpath", f.jfpath],
+    ["depsFile", f.k8sDepsFile],
+    ["bbpipeImage", f.bbpipeImage],
+    ["k8s.registryName", f.k8sRegistryName],
+    ["cr.registryName", f.crRegistryName],
+    ["cr.projId.dev", f.crProjId.dev],
+    ["cr.projId.release", f.crProjId.release],
+    ["cr.projId.prod", f.crProjId.prod],
+    ["apigee.dev", f.apigeeEnv.dev.org],
+    ["apigee.release", f.apigeeEnv.release.org],
+    ["apigee.prod", f.apigeeEnv.prod.org],
+  ];
+  return derivados.filter(([clave, valor]) => valor && !f.tocados[clave]).length;
 }

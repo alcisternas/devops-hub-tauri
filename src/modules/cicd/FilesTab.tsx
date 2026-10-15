@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { WarningNotice } from "../../components/ui";
 import CollapsibleSection from "../../components/CollapsibleSection";
+import SubirPanel from "./SubirPanel";
 import type { ArchivosPorRepo, Hallazgo } from "./generators";
 import { MARCADOR } from "./generators";
 
@@ -8,6 +9,10 @@ interface Props {
   archivos: ArchivosPorRepo;
   hallazgos: Hallazgo[];
   ramaDestino: string;
+  ticket: string;
+  // Si la pestaña está a la vista: el panel de credenciales no consulta
+  // el llavero hasta entonces.
+  activo: boolean;
 }
 
 // Resalta las líneas con un marcador PENDIENTE. Es lo único que se pinta
@@ -42,14 +47,14 @@ function Contenido({ texto }: { texto: string }) {
   );
 }
 
-export default function FilesTab({ archivos, hallazgos, ramaDestino }: Props) {
+export default function FilesTab({ archivos, hallazgos, ramaDestino, ticket, activo }: Props) {
   const repos = Object.keys(archivos);
   const [abierto, setAbierto] = useState<string>("");
 
   if (!repos.length) {
     return (
       <div className="text-sm" style={{ color: "var(--text-muted)" }}>
-        Completá el formulario para ver los archivos. Hacen falta al menos un repositorio y un
+        Completa el formulario para ver los archivos. Hacen falta al menos un repositorio y un
         ambiente.
       </div>
     );
@@ -79,6 +84,18 @@ export default function FilesTab({ archivos, hallazgos, ramaDestino }: Props) {
           {hallazgos.length > 6 && <div style={{ marginTop: 4 }}>…y {hallazgos.length - 6} más.</div>}
         </WarningNotice>
       )}
+
+      <SubirPanel
+        archivos={archivos}
+        huecos={hallazgos}
+        rama={ramaDestino}
+        ticket={ticket}
+        activo={activo}
+      />
+
+      <div className="text-xs pt-2" style={{ color: "var(--text-muted)" }}>
+        Vista previa del contenido
+      </div>
 
       {repos.map((repo) => (
         <CollapsibleSection

@@ -23,8 +23,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-use super::super::eks::config::RefreshError;
+use super::super::eks::config::{load_or_create_accounts, RefreshError};
 use super::super::eks::permissions::emit_progress;
+use super::super::gke::login::ensure_gcp_session;
 
 // Tag con el que la consola global identifica las líneas de este módulo.
 const MODULO: &str = "cicd";
@@ -64,6 +65,14 @@ impl CatalogoSubredes {
         }
     }
 
+    fn get(&self, env: &str) -> &[Subnet] {
+        match env {
+            "dev" => &self.dev,
+            "release" => &self.release,
+            _ => &self.prod,
+        }
+    }
+
     fn total(&self) -> usize {
         self.dev.len() + self.release.len() + self.prod.len()
     }
@@ -95,6 +104,10 @@ pub struct EstadoSubredes {
     // Un mensaje por proyecto que falló. Si está vacío, ningún proyecto
     // falló — no significa que haya datos.
     pub errores: Vec<String>,
+    // Cuenta de gcloud con la que se consulta, tomada de la configuración
+    // del hub. Se muestra en pantalla: si no es la correcta, conviene verlo
+    // antes de ejecutar y no después de un error de permisos.
+    pub cuenta: Option<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -190,7 +203,21 @@ fn parsear_salida(json: &str) -> Result<Vec<Subnet>, String> {
     Ok(lista)
 }
 
-async fn consultar_proyecto(proyecto: &str) -> Result<Vec<Subnet>, String> {
+// Señales de sesión vencida en el texto de error de gcloud. Es la misma
+// lista que usa el módulo GKE: si cambia allá, conviene cambiarla acá.
+fn parece_sesion_vencida(texto: &str) -> bool {
+    let t = texto.to_lowercase();
+    [
+        "reauth",
+        "refreshing your current auth",
+        "does not have any valid credentials",
+        "invalid_grant",
+    ]
+    .iter()
+    .any(|s| t.contains(s))
+}
+
+async fn consultar_proyecto(proyecto: &str, cuenta: &str) -> Result<Vec<Subnet>, String> {
     let salida = tokio::process::Command::new("gcloud")
         .args([
             "compute",
@@ -198,6 +225,7 @@ async fn consultar_proyecto(proyecto: &str) -> Result<Vec<Subnet>, String> {
             "subnets",
             "list",
             &format!("--project={}", proyecto),
+            &format!("--account={}", cuenta),
             "--format=json",
         ])
         .output()
@@ -221,14 +249,167 @@ async fn consultar_proyecto(proyecto: &str) -> Result<Vec<Subnet>, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Comparación entre lo que había y lo que llegó
+//
+// Después de actualizar, lo que interesa no es el total sino qué cambió:
+// una subred nueva suele ser un proyecto nuevo, y una región distinta
+// cambia el service.yaml de ese proyecto. Todo esto va a la consola, que
+// es donde se puede leer con calma.
+// ─────────────────────────────────────────────────────────────────────────
+struct CambiosAmbiente {
+    nuevas: Vec<Subnet>,
+    eliminadas: Vec<Subnet>,
+    // (nombre, región anterior, región nueva)
+    region_cambiada: Vec<(String, String, String)>,
+}
+
+impl CambiosAmbiente {
+    fn hay(&self) -> bool {
+        !self.nuevas.is_empty() || !self.eliminadas.is_empty() || !self.region_cambiada.is_empty()
+    }
+}
+
+fn comparar(antes: &[Subnet], ahora: &[Subnet]) -> CambiosAmbiente {
+    let buscar = |lista: &[Subnet], nombre: &str| -> Option<Subnet> {
+        lista.iter().find(|s| s.n == nombre).cloned()
+    };
+
+    let nuevas: Vec<Subnet> = ahora
+        .iter()
+        .filter(|s| buscar(antes, &s.n).is_none())
+        .cloned()
+        .collect();
+
+    let eliminadas: Vec<Subnet> = antes
+        .iter()
+        .filter(|s| buscar(ahora, &s.n).is_none())
+        .cloned()
+        .collect();
+
+    let region_cambiada: Vec<(String, String, String)> = ahora
+        .iter()
+        .filter_map(|s| {
+            let previa = buscar(antes, &s.n)?;
+            if previa.r == s.r {
+                None
+            } else {
+                Some((s.n.clone(), previa.r, s.r.clone()))
+            }
+        })
+        .collect();
+
+    CambiosAmbiente {
+        nuevas,
+        eliminadas,
+        region_cambiada,
+    }
+}
+
+// Escribe el resumen en la consola. El progreso va en el máximo para que
+// la barra quede completa: estas líneas son el cierre, no un paso más.
+fn emitir_resumen(
+    app: &AppHandle,
+    total: u32,
+    previo_existia: bool,
+    cambios: &[(&str, CambiosAmbiente)],
+) {
+    if !previo_existia {
+        emit_progress(
+            MODULO,
+            app,
+            "Resumen",
+            "Primera consulta en este equipo — no hay nada con qué comparar",
+            total,
+            total,
+            "ok",
+        );
+        return;
+    }
+
+    if !cambios.iter().any(|(_, c)| c.hay()) {
+        emit_progress(
+            MODULO,
+            app,
+            "Resumen",
+            "Sin cambios respecto de la consulta anterior",
+            total,
+            total,
+            "ok",
+        );
+        return;
+    }
+
+    for (ambiente, c) in cambios {
+        for s in &c.nuevas {
+            emit_progress(
+                MODULO,
+                app,
+                &format!("Nueva en {}", ambiente),
+                &format!("{} ({})", s.n, s.r),
+                total,
+                total,
+                "ok",
+            );
+        }
+        for s in &c.eliminadas {
+            emit_progress(
+                MODULO,
+                app,
+                &format!("Ya no está en {}", ambiente),
+                &format!("{} ({})", s.n, s.r),
+                total,
+                total,
+                "error",
+            );
+        }
+        for (nombre, antes, ahora) in &c.region_cambiada {
+            emit_progress(
+                MODULO,
+                app,
+                &format!("Cambió de región en {}", ambiente),
+                &format!("{}: {} -> {}", nombre, antes, ahora),
+                total,
+                total,
+                "error",
+            );
+        }
+    }
+
+    let nuevas: usize = cambios.iter().map(|(_, c)| c.nuevas.len()).sum();
+    let eliminadas: usize = cambios.iter().map(|(_, c)| c.eliminadas.len()).sum();
+    let regiones: usize = cambios.iter().map(|(_, c)| c.region_cambiada.len()).sum();
+    emit_progress(
+        MODULO,
+        app,
+        "Resumen",
+        &format!(
+            "{} nuevas, {} eliminadas, {} con otra región",
+            nuevas, eliminadas, regiones
+        ),
+        total,
+        total,
+        "ok",
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Comandos que React invoca
 // ─────────────────────────────────────────────────────────────────────────
 
 // Se llama al abrir el módulo. Nunca consulta en vivo ni pide nada: solo
 // informa qué hay guardado. Si no hay caché, el frontend usa su catálogo
 // semilla y lo dice en pantalla.
+// Cuenta configurada en el hub. La misma que usa el módulo de Clusters
+// para GCP: el usuario trabaja con una sola cuenta para todo.
+fn cuenta_configurada(app: &AppHandle) -> Option<String> {
+    load_or_create_accounts(app)
+        .ok()
+        .map(|cfg| cfg.gcp.chile.account)
+}
+
 #[tauri::command]
 pub async fn cicd_subnets_leer(app: AppHandle) -> Result<EstadoSubredes, RefreshError> {
+    let cuenta = cuenta_configurada(&app);
     match leer_cache(&app) {
         Some(cache) => {
             let total = cache.catalogo.total();
@@ -238,6 +419,7 @@ pub async fn cicd_subnets_leer(app: AppHandle) -> Result<EstadoSubredes, Refresh
                 catalogo: cache.catalogo,
                 detalle: format!("{} subredes en caché local.", total),
                 errores: vec![],
+                cuenta,
             })
         }
         None => Ok(EstadoSubredes {
@@ -247,6 +429,7 @@ pub async fn cicd_subnets_leer(app: AppHandle) -> Result<EstadoSubredes, Refresh
             detalle: "Sin caché en este equipo — se usa el catálogo incluido en la aplicación."
                 .to_string(),
             errores: vec![],
+            cuenta,
         }),
     }
 }
@@ -260,6 +443,13 @@ pub async fn cicd_subnets_leer(app: AppHandle) -> Result<EstadoSubredes, Refresh
 // ya estaba, un ambiente que falla conserva lo que tenía en caché.
 #[tauri::command]
 pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, RefreshError> {
+    let cuenta = cuenta_configurada(&app).ok_or_else(|| {
+        RefreshError::new(
+            "cuenta_gcp",
+            "No hay una cuenta de GCP configurada en el hub.",
+        )
+    })?;
+
     let previo = leer_cache(&app);
     let mut catalogo = previo
         .as_ref()
@@ -267,13 +457,66 @@ pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, R
         .unwrap_or_default();
 
     let mut errores: Vec<String> = Vec::new();
-    let total = NETWORKING.len() as u32;
+    // Catálogo previo intacto, para comparar al final contra lo que llegó.
+    let catalogo_previo = catalogo.clone();
+    let previo_existia = previo.is_some();
+    // Los ambientes que se actualizaron bien: los que fallaron no entran en
+    // la comparación, porque conservan el valor anterior y "sin cambios"
+    // sería engañoso.
+    let mut actualizados: Vec<&str> = Vec::new();
+    // Un paso más que los tres proyectos: la sesión se verifica primero.
+    let total = NETWORKING.len() as u32 + 1;
+
+    // Asegurar la sesión ANTES de consultar. Es lo que hace el módulo de
+    // Clusters y lo que faltaba acá: sin esto, una sesión vencida llegaba
+    // como un error crudo de gcloud en vez de pedir autenticación.
+    emit_progress(MODULO, &app, "Verificando sesión de gcloud", &cuenta, 1, total, "running");
+    let app_login = app.clone();
+    let cuenta_login = cuenta.clone();
+    let sesion = tokio::task::spawn_blocking(move || ensure_gcp_session(&cuenta_login))
+        .await
+        .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
+
+    match sesion {
+        Ok(reutilizada) => emit_progress(
+            MODULO,
+            &app_login,
+            if reutilizada { "Sesión vigente" } else { "Sesión iniciada" },
+            &cuenta,
+            1,
+            total,
+            "ok",
+        ),
+        Err(e) => {
+            emit_progress(MODULO, &app_login, "Sin sesión de gcloud", &cuenta, 1, total, "error");
+            return Err(e);
+        }
+    }
 
     for (i, (env, proyecto)) in NETWORKING.iter().enumerate() {
-        let n = (i + 1) as u32;
+        let n = (i + 2) as u32;
         emit_progress(MODULO, &app, "Consultando subredes", proyecto, n, total, "running");
 
-        match consultar_proyecto(proyecto).await {
+        let mut resultado = consultar_proyecto(proyecto, &cuenta).await;
+
+        // Si el token venció a mitad de la operación, un relogin y un
+        // único reintento. Mismo criterio que el módulo de Clusters: si
+        // falla de nuevo, el error es real y no de credenciales.
+        if let Err(e) = &resultado {
+            if parece_sesion_vencida(e) {
+                emit_progress(MODULO, &app, "Sesión vencida, reintentando", proyecto, n, total, "running");
+                let cuenta_retry = cuenta.clone();
+                let relogin =
+                    tokio::task::spawn_blocking(move || ensure_gcp_session(&cuenta_retry))
+                        .await
+                        .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
+                if relogin.is_ok() {
+                    resultado = consultar_proyecto(proyecto, &cuenta).await;
+                }
+            }
+        }
+
+        match resultado {
             Ok(lista) => {
                 emit_progress(
                     MODULO,
@@ -285,34 +528,47 @@ pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, R
                     "ok",
                 );
                 catalogo.set(env, lista);
+                actualizados.push(env);
             }
             Err(e) => {
-                emit_progress(MODULO, &app, "Error al consultar", proyecto, n, total, "error");
-                errores.push(format!("{}: {}", proyecto, e));
+                // El detalle completo va a la consola, que es donde se
+                // puede leer tranquilo. En pantalla queda solo el nombre
+                // del proyecto que falló.
+                emit_progress(MODULO, &app, &format!("Error: {}", e), proyecto, n, total, "error");
+                errores.push(proyecto.to_string());
             }
         }
     }
 
-    // Los tres fallaron y no había nada guardado: no hay resultado que
-    // devolver, así que es un error y no un éxito vacío.
     if errores.len() == NETWORKING.len() && previo.is_none() {
         return Err(RefreshError::new(
             "consultar_subredes",
-            format!(
-                "No se pudo consultar ninguno de los proyectos de networking.\n{}",
-                errores.join("\n")
-            ),
+            "No se pudo consultar ninguno de los proyectos de networking. El detalle está en la consola.",
         ));
     }
+
+    // Resumen comparativo, después del detalle de cada proyecto.
+    let cambios: Vec<(&str, CambiosAmbiente)> = actualizados
+        .iter()
+        .map(|env| {
+            let antes = catalogo_previo.get(env);
+            let ahora = catalogo.get(env);
+            (*env, comparar(antes, ahora))
+        })
+        .collect();
+    emitir_resumen(&app, total, previo_existia, &cambios);
 
     let (actualizado, aviso) = match guardar_cache(&app, &catalogo) {
         Ok(fecha) => (Some(fecha), String::new()),
         // Los datos sirven igual en esta sesión; lo que se pierde es
         // recordarlos para la próxima.
-        Err(e) => (
-            previo.as_ref().map(|c| c.actualizado.clone()),
-            format!(" No se pudo guardar la caché: {}", e),
-        ),
+        Err(e) => {
+            emit_progress(MODULO, &app, &format!("No se pudo guardar la caché: {}", e), "caché", total, total, "error");
+            (
+                previo.as_ref().map(|c| c.actualizado.clone()),
+                " La caché no se pudo guardar — ver la consola.".to_string(),
+            )
+        }
     };
 
     let detalle = format!(
@@ -330,5 +586,6 @@ pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, R
         catalogo,
         detalle,
         errores,
+        cuenta: Some(cuenta),
     })
 }

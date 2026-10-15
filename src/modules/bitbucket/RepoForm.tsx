@@ -8,12 +8,15 @@ export interface DatosForm {
   pais: string;
   activarPipelines: boolean;
   crearRamas: boolean;
+  crearSonar: boolean;
 }
 
 interface Props {
   datos: DatosForm;
   onCambio: (datos: DatosForm) => void;
   deshabilitado: boolean;
+  // Si el token de SonarQube no está validado, la casilla no se puede marcar.
+  sonarDisponible: boolean;
 }
 
 const estiloInput = {
@@ -22,7 +25,7 @@ const estiloInput = {
   color: "var(--text)",
 };
 
-export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
+export default function RepoForm({ datos, onCambio, deshabilitado, sonarDisponible }: Props) {
   // Helper para no repetir el spread en cada campo.
   const set = <K extends keyof DatosForm>(campo: K, valor: DatosForm[K]) =>
     onCambio({ ...datos, [campo]: valor });
@@ -153,11 +156,33 @@ export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
               Crear ramas base desde master
             </span>
           </label>
+
+          <label
+            className="flex items-center gap-2"
+            style={{ cursor: sonarDisponible ? "pointer" : "not-allowed" }}
+          >
+            <input
+              type="checkbox"
+              checked={datos.crearSonar && sonarDisponible}
+              onChange={(e) => set("crearSonar", e.target.checked)}
+              disabled={deshabilitado || !sonarDisponible}
+              className="w-4 h-4"
+              style={{ accentColor: "var(--accent)" }}
+            />
+            <span
+              className="text-sm"
+              style={{ color: sonarDisponible ? "var(--text)" : "var(--text-faint)" }}
+            >
+              Crear proyectos en SonarQube
+            </span>
+          </label>
         </div>
       </div>
 
       <div className="text-xs" style={{ color: "var(--text-faint)" }}>
-        Pipelines debe quedar activo para poder vincular SonarQube después.
+        {sonarDisponible
+          ? "El proyecto de SonarQube se crea con la key definitiva y vinculado al repositorio. El widget en Bitbucket sigue siendo manual."
+          : "Para crear proyectos en SonarQube hay que validar el token primero."}
       </div>
     </div>
   );
