@@ -1,6 +1,40 @@
 use std::process::Command;
 
 mod modules;
+
+// Las apps lanzadas desde Finder/GUI en macOS y Linux no heredan el PATH del
+// shell del usuario — solo reciben el PATH mínimo del sistema. Esta función
+// prepende las rutas comunes de Homebrew e instaladores oficiales para que
+// aws, gcloud y kubectl sean encontrables igual que en modo dev.
+#[cfg(not(target_os = "windows"))]
+fn ampliar_path() {
+    let actual = std::env::var("PATH").unwrap_or_default();
+    let mut dirs: Vec<String> = actual.split(':').map(str::to_string).collect();
+
+    if let Ok(home) = std::env::var("HOME") {
+        let local_bin = format!("{}/.local/bin", home);
+        if !dirs.contains(&local_bin) {
+            dirs.insert(0, local_bin);
+        }
+    }
+
+    for p in [
+        "/opt/homebrew/sbin",
+        "/opt/homebrew/bin",
+        "/usr/local/sbin",
+        "/usr/local/bin",
+    ] {
+        let s = p.to_string();
+        if !dirs.contains(&s) {
+            dirs.insert(0, s);
+        }
+    }
+
+    std::env::set_var("PATH", dirs.join(":"));
+}
+
+#[cfg(target_os = "windows")]
+fn ampliar_path() {}
 use modules::bitbucket;
 use modules::cicd;
 use modules::eks;
@@ -28,6 +62,7 @@ fn run_command(program: String, args: Vec<String>) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    ampliar_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(eks::sso::ConfigBackupState(std::sync::Mutex::new(false)))

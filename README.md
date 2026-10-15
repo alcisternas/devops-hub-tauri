@@ -14,7 +14,7 @@ Panel de control unificado para el equipo DevOps de Banco Ripley, construido con
 - [Rust](https://www.rust-lang.org/tools/install) (toolchain estable)
 - [Tauri CLI](https://tauri.app/start/prerequisites/) — dependencias del sistema operativo según la plataforma (Xcode Command Line Tools en macOS, WebView2 en Windows, paquetes de desarrollo de WebKitGTK en Linux)
 
-Además, para que el módulo Clusters funcione en tiempo de ejecución, la máquina necesita `aws`, `gcloud` y `kubectl` instalados y accesibles en el `PATH` — la app los verifica al abrir el módulo y avisa si falta alguno.
+Además, para que el módulo Clusters funcione en tiempo de ejecución, la máquina necesita `aws`, `gcloud` y `kubectl` instalados. La app amplía el PATH automáticamente al iniciar para encontrarlos en las rutas habituales de Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`) y de usuario (`~/.local/bin`), y avisa si falta alguno.
 
 ## Desarrollo
 

@@ -76,6 +76,7 @@ Versiones publicadas:
 | 0.3.0 | Módulo Bitbucket |
 | 0.5.2 | CI/CD Fase A+B + correcciones |
 | 0.6.0 | SonarQube Cloud integrado a Bitbucket |
+| 0.6.2 | Fix PATH en app instalada (macOS/Linux) |
 
 Versiones planificadas:
 
@@ -166,6 +167,7 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **Balanceador de llaves propio** no detecta errores de tipos ni de borrow-checker. No es sustituto de `cargo check` o `tsc`.
 - **`borrar()` en el llavero debe ser idempotente**: `NoEntry` es éxito, no error.
 - **Voseo en textos de interfaz**: prohibido. Español latinoamericano neutro.
+- **PATH en app instalada**: macOS y Linux lanzan las apps GUI con PATH mínimo del sistema (`/usr/bin:/bin`). `aws`, `gcloud`, `kubectl` instalados en `/opt/homebrew/bin` o `/usr/local/bin` no se encuentran. → `ampliar_path()` en `lib.rs` lo corrige al iniciar antes de que Tauri arranque sus hilos. El bug **no aparece en `npm run tauri dev`** — probar siempre con el binario instalado antes de cada release.
 
 ---
 
