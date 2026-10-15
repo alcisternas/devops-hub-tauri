@@ -1,0 +1,162 @@
+# CONTRATOS.md — Acuerdos entre módulos
+
+Acuerdos sobre código compartido, firmas de funciones y decisiones que afectan a más de un módulo.
+
+---
+
+## Infraestructura compartida
+
+### `src-tauri/src/modules/llavero.rs`
+
+Creado por el chat de Bitbucket/Sonar. Usado hoy por Sonar. Pendiente adopción por Bitbucket y CI/CD.
+
+**Contrato:**
+```rust
+llavero::obtener(servicio: &str, usuario: &str) -> Result<String, String>
+llavero::guardar(servicio: &str, usuario: &str, valor: &str) -> Result<(), String>
+llavero::borrar(servicio: &str, usuario: &str) -> Result<(), String>
+```
+
+Reglas:
+- `borrar()` es idempotente: `NoEntry` es éxito, no error.
+- El helper sostiene el candado durante la lectura: dos llamadas simultáneas producen una sola lectura del llavero.
+- El helper no valida credenciales. Cada módulo valida contra la API antes de llamar a `guardar()`.
+- El helper guarda texto opaco: Bitbucket guarda JSON, Sonar un token suelto. El helper no sabe la diferencia.
+- Se recupera de Mutex envenenado con `into_inner()`.
+
+Convención de nombres de servicio: `devops-hub-<sistema>`. Un ítem por sistema externo.
+
+Servicios registrados:
+
+| Servicio | Usuario | Contenido | Módulo dueño |
+|---|---|---|---|
+| `devops-hub-bitbucket` | `credenciales` | JSON con `email` y `token` | Bitbucket |
+| `devops-hub-sonarqube` | `token` | Token en texto plano | Sonar |
+| `devops-hub-jenkins` | pendiente | pendiente | CI/CD Fase C |
+
+---
+
+### `src-tauri/src/modules/system.rs`
+
+Creado por el chat de Clusters. Propósito general.
+
+**Comando expuesto:** `check_dependencies` — verifica que `aws`, `gcloud` y `kubectl` estén instalados, con guía por sistema operativo. Cualquier módulo puede mostrarlo; nadie debe reimplementarlo.
+
+---
+
+### `src-tauri/src/lib.rs`
+
+Archivo de registro de todos los comandos Tauri. **Nadie entrega este archivo completo.** Solo se entregan las líneas a agregar. Razón: entregar el archivo completo sobre una base vieja elimina silenciosamente los comandos de otros módulos sin error de compilación.
+
+Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4).
+
+Comando remanente sin uso en frontend: `get_eks_accounts` — candidato a eliminar.
+
+---
+
+### `src-tauri/src/modules/mod.rs`
+
+Mismo criterio que `lib.rs`: solo entregar las líneas a agregar.
+
+---
+
+## Archivos de UI compartidos
+
+### `src/App.tsx`
+
+Dueño original: Clusters. Modificado por Bitbucket y CI/CD para agregar rutas.
+
+Patrón: módulos siempre montados, visibilidad por CSS. Al agregar un módulo nuevo, agregarlo al array `MODULES`. No usar desmontaje al navegar.
+
+### `src/components/Layout.tsx`
+
+Sidebar de la app. Cada módulo agrega su entrada al incorporarse. Coordinación necesaria antes de modificar.
+
+### `src/modules/clusters/GlobalConsole.tsx`
+
+Creado por Clusters. Modificado por Bitbucket (etiqueta `bitbucket`) y CI/CD (etiqueta `cicd`, props `collapsed`/`onToggleCollapsed`). Tiene tres dueños implícitos. Coordinar antes de modificar.
+
+Para agregar un módulo nuevo al mapa de etiquetas, agregar la entrada en `MODULE_LABELS`:
+```tsx
+const MODULE_LABELS: Record<string, string> = {
+    clusters: "[Clusters]",
+    bitbucket: "[Bitbucket]",
+    cicd: "[CI/CD]",
+    // nuevo: "[NuevoMódulo]"
+};
+```
+
+### `src/components/CollapsibleSection.tsx`
+
+Creado por Clusters. Modificado por CI/CD: se quitó `overflow-hidden` porque recortaba los Dropdown anidados. El cambio es intencional y permanente. Si se recupera `overflow-hidden`, los Dropdown de CI/CD dejan de funcionar.
+
+### `src/components/ui.tsx`
+
+Creado por Clusters. No modificado por otros módulos. Contiene: `Button`, `Dropdown`, `ErrorNotice`, `SuccessNotice`, `WarningNotice`, `FieldLabel`, `MetaLine`.
+
+### `src/modules/home/index.tsx`
+
+Pantalla de inicio. Cada módulo agrega su tarjeta al incorporarse, con `available: true`. Coordinación necesaria.
+
+---
+
+## Deuda técnica conocida
+
+### `bitbucket/credentials.rs` — migración pendiente al helper
+
+El módulo Bitbucket tiene una caché propia (`OnceLock<Mutex<Option<Credenciales>>>`) en lugar de usar `llavero.rs`. Funciona pero tiene un defecto: suelta el candado antes de leer el llavero, así dos llamadas simultáneas pueden leer dos veces.
+
+**Secuencia acordada:**
+1. `llavero.rs` queda estable en el repositorio (ya está).
+2. El chat de CI/CD reemplaza la caché propia de `bitbucket/credentials.rs` por el helper.
+3. CI/CD adapta su propio código que consume `obtener_credenciales()`.
+
+Lo que no puede perderse al migrar:
+- `borrar()` debe ser idempotente (ya está en el contrato del helper).
+- La validación contra la API queda en el módulo, antes de llamar a `guardar()` — el helper no valida.
+
+### `withGlobalTauri: true` en `tauri.conf.json`
+
+Activado por Bitbucket para depurar desde la consola del navegador. Ningún módulo lo necesita en producción (verificado: no hay referencias a `window.__TAURI__` en `src/`). Se quita cuando Jenkins y Spinnaker estén completos.
+
+---
+
+## Temas abiertos que necesitan decisión
+
+### Templates de archivos CI/CD
+
+El chat de Templates/Definiciones identificó 24 preguntas abiertas y 7 contradicciones en los archivos generados (`JenkinsParams`, `service.yaml`, `istio.yaml`, `bitbucket-pipelines.yml`). Bloquea ajustes en los generadores de CI/CD. La revisión está en curso en conversación aparte.
+
+Puntos específicos sin resolver:
+- Cloud Run: condición para incluir red compartida (VPC) en `service.yaml`
+- Cloud Run: `serviceAccountName` real (el ejemplo real usa `@appspot.gserviceaccount.com`, no confirmado como estándar)
+- Cloud Run: variables de entorno de aplicación — dejar vacías como en K8S o definir subconjunto
+- Apigee Perú: valores de `APIGEE_ORG`, `APIGEE_ENV`, `APIGEE_SERVICE_ID` por ambiente no definidos
+- `GOLANG_TOOL_VERSION=1.21` (K8S) vs `GO_TOOL_VERSION=1.25` (Cloud Run): ¿intencional?
+
+### Decoración de pull requests con SonarQube
+
+El binding Bitbucket↔Sonar existe y está verificado por API. Que el comentario de Sonar aparezca en un PR real nunca se probó. Requiere un PR sobre un repositorio bindeado. Depende de dos tickets separados en el tiempo.
+
+### Diálogos del llavero en macOS
+
+La medición en desarrollo bajó de 6 a 2 diálogos por sesión. No se confirmó si 2 es el mínimo real o siguen duplicados. Verificar con el binario compilado e instalado, no en modo dev.
+
+### AppImage en Linux con D-Bus
+
+Las AppImage excluyen algunas librerías de sistema. No está verificado que el binario encuentre D-Bus en la máquina del usuario. Se descubre al correr el workflow en una máquina Linux real.
+
+### Logo del camaleón
+
+El origen y la licencia no están confirmados. La app se distribuye a ~15 personas. Confirmar antes de distribuir.
+
+---
+
+## Lo que cada módulo NO toca del otro
+
+| Módulo | No tocar sin coordinar |
+|---|---|
+| Clusters | `GlobalConsole.tsx`, `CollapsibleSection.tsx`, `ui.tsx`, `index.css` |
+| Bitbucket | `bitbucket/credentials.rs` hasta que CI/CD haga la migración al helper |
+| CI/CD | `CollapsibleSection.tsx` — el cambio de `overflow-hidden` es suyo y los otros dependen de él |
+| Todos | `lib.rs`, `modules/mod.rs` — nunca entregar completos |
