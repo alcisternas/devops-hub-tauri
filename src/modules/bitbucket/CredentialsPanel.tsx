@@ -23,7 +23,11 @@ interface Props {
   onEstadoCambia: (listo: boolean) => void;
 }
 
-export default function CredentialsPanel({ workspace, onEstadoCambia }: Props) {
+// Estado compartido entre todas las instancias montadas (Bitbucket + CI/CD).
+// Evita leer el Keychain más de una vez por sesión.
+let estadoCompartido: CredStatus | null = null;
+
+export default function CredentialsPanel({ workspace, activo = true, onEstadoCambia }: Props) {
   const [estado, setEstado] = useState<CredStatus | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -38,6 +42,7 @@ export default function CredentialsPanel({ workspace, onEstadoCambia }: Props) {
     setError("");
     try {
       const st = await invoke<CredStatus>("bitbucket_cred_status", { workspace });
+      estadoCompartido = st;
       setEstado(st);
       onEstadoCambia(st.validas);
     } catch (e) {
@@ -48,19 +53,27 @@ export default function CredentialsPanel({ workspace, onEstadoCambia }: Props) {
     }
   }
 
-  // Solo al montar. No se re-consulta cuando cambia el workspace: eso
-  // dispararía una llamada a la API con cada tecla que el usuario escriba
-  // en ese campo.
+  // Solo cuando el panel queda visible por primera vez. Mientras activo=false
+  // (módulo oculto) no se toca el Keychain. El cache compartido evita una
+  // segunda lectura cuando hay otra instancia montada (CI/CD SubirPanel).
   useEffect(() => {
+    if (!activo) return;
+    if (estadoCompartido) {
+      setEstado(estadoCompartido);
+      setCargando(false);
+      onEstadoCambia(estadoCompartido.validas);
+      return;
+    }
     consultar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activo]);
 
   async function guardar() {
     setGuardando(true);
     setError("");
     try {
       const st = await invoke<CredStatus>("bitbucket_cred_save", { email, token, workspace });
+      estadoCompartido = st;
       setEstado(st);
       onEstadoCambia(st.validas);
       if (st.validas) {
@@ -81,6 +94,7 @@ export default function CredentialsPanel({ workspace, onEstadoCambia }: Props) {
     setError("");
     try {
       await invoke("bitbucket_cred_delete");
+      estadoCompartido = null;
       await consultar();
     } catch (e) {
       setError(parseErr(e));

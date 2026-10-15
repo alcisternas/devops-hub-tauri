@@ -77,6 +77,7 @@ Versiones publicadas:
 | 0.5.2 | CI/CD Fase A+B + correcciones |
 | 0.6.0 | SonarQube Cloud integrado a Bitbucket |
 | 0.6.2 | Fix PATH en app instalada (macOS/Linux) |
+| 0.6.3 | Fix diálogos duplicados del Keychain al iniciar |
 
 Versiones planificadas:
 
@@ -168,6 +169,7 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **`borrar()` en el llavero debe ser idempotente**: `NoEntry` es éxito, no error.
 - **Voseo en textos de interfaz**: prohibido. Español latinoamericano neutro.
 - **PATH en app instalada**: macOS y Linux lanzan las apps GUI con PATH mínimo del sistema (`/usr/bin:/bin`). `aws`, `gcloud`, `kubectl` instalados en `/opt/homebrew/bin` o `/usr/local/bin` no se encuentran. → `ampliar_path()` en `lib.rs` lo corrige al iniciar antes de que Tauri arranque sus hilos. El bug **no aparece en `npm run tauri dev`** — probar siempre con el binario instalado antes de cada release.
+- **Diálogos duplicados del Keychain**: `App.tsx` monta todos los módulos al iniciar, incluyendo `CredentialsPanel` dos veces (Bitbucket + CI/CD `SubirPanel`). Sin caché, cada instancia leía el Keychain por separado. → `bitbucket/credentials.rs` migrado a `llavero.rs` (caché en memoria); `CredentialsPanel` respeta `activo` y comparte `estadoCompartido` entre instancias. Mismo patrón que `SonarCredentialsPanel`.
 
 ---
 
@@ -190,7 +192,7 @@ El actualizador automático está configurado en `tauri.conf.json` pero **no est
 ## Pendientes globales
 
 - `withGlobalTauri: true` — quitar cuando Jenkins y Spinnaker estén completos
-- `bitbucket/credentials.rs` — migrar al helper `llavero.rs` (lo hace el chat de CI/CD)
+- `bitbucket/credentials.rs` — migrado a `llavero.rs` en v0.6.3 ✓
 - `get_eks_accounts` — eliminar de `lib.rs` si no se reactiva
 - Actualizador automático — activar el plugin
 - Validar `CollapsibleSection` sin `overflow-hidden` en Clusters y Bitbucket (cosmético)
