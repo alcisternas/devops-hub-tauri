@@ -18,6 +18,7 @@ const URL_TOKENS = "id.atlassian.com/manage-profile/security/api-tokens";
 
 interface Props {
   workspace: string;
+  activo?: boolean;
   // El formulario de arriba necesita saber si puede dejar crear o no.
   onEstadoCambia: (listo: boolean) => void;
 }
