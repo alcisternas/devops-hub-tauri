@@ -33,8 +33,46 @@ fn ampliar_path() {
     std::env::set_var("PATH", dirs.join(":"));
 }
 
+// En Windows el problema es distinto: Explorer hereda el PATH del momento en
+// que arrancó, así que software instalado después (o en otra sesión de
+// consola) no es visible. Se agregan las rutas habituales de gcloud y AWS CLI.
 #[cfg(target_os = "windows")]
-fn ampliar_path() {}
+fn ampliar_path() {
+    let actual = std::env::var("PATH").unwrap_or_default();
+    let mut dirs: Vec<String> = actual.split(';').map(str::to_string).collect();
+
+    // gcloud instalado en AppData\Roaming (instalador por consola / winget)
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        for sub in ["gcloud", r"gcloud\bin"] {
+            let p = format!(r"{}\{}", appdata, sub);
+            if !dirs.contains(&p) {
+                dirs.push(p);
+            }
+        }
+    }
+
+    // gcloud instalado en AppData\Local (instalador interactivo de Google)
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let p = format!(r"{}\Google\Cloud SDK\google-cloud-sdk\bin", local);
+        if !dirs.contains(&p) {
+            dirs.push(p);
+        }
+    }
+
+    // gcloud para todos los usuarios + AWS CLI v2
+    for p in [
+        r"C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin",
+        r"C:\Program Files\Google\Cloud SDK\google-cloud-sdk\bin",
+        r"C:\Program Files\Amazon\AWSCLIV2",
+    ] {
+        let s = p.to_string();
+        if !dirs.contains(&s) {
+            dirs.push(s);
+        }
+    }
+
+    std::env::set_var("PATH", dirs.join(";"));
+}
 use modules::bitbucket;
 use modules::cicd;
 use modules::eks;
