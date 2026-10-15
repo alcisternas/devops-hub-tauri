@@ -8,7 +8,7 @@ Acuerdos sobre código compartido, firmas de funciones y decisiones que afectan 
 
 ### `src-tauri/src/modules/llavero.rs`
 
-Creado por el chat de Bitbucket/Sonar. Usado hoy por Sonar. Pendiente adopción por Bitbucket y CI/CD.
+Creado por el chat de Bitbucket/Sonar. Adoptado por Sonar (v0.6.0) y Bitbucket (v0.6.3). Pendiente adopción por CI/CD (solo usa `obtener_credenciales()` del módulo Bitbucket, no lee el llavero directamente).
 
 **Contrato:**
 ```rust
@@ -102,18 +102,9 @@ Pantalla de inicio. Cada módulo agrega su tarjeta al incorporarse, con `availab
 
 ## Deuda técnica conocida
 
-### `bitbucket/credentials.rs` — migración pendiente al helper
+### ~~`bitbucket/credentials.rs` — migración pendiente al helper~~ — Resuelto en v0.6.3
 
-El módulo Bitbucket tiene una caché propia (`OnceLock<Mutex<Option<Credenciales>>>`) en lugar de usar `llavero.rs`. Funciona pero tiene un defecto: suelta el candado antes de leer el llavero, así dos llamadas simultáneas pueden leer dos veces.
-
-**Secuencia acordada:**
-1. `llavero.rs` queda estable en el repositorio (ya está).
-2. El chat de CI/CD reemplaza la caché propia de `bitbucket/credentials.rs` por el helper.
-3. CI/CD adapta su propio código que consume `obtener_credenciales()`.
-
-Lo que no puede perderse al migrar:
-- `borrar()` debe ser idempotente (ya está en el contrato del helper).
-- La validación contra la API queda en el módulo, antes de llamar a `guardar()` — el helper no valida.
+`bitbucket/credentials.rs` fue migrado a `llavero.rs` en v0.6.3. La caché propia fue eliminada; el módulo usa `static LLAVERO: Llavero` igual que Sonar. CI/CD sigue consumiendo `obtener_credenciales()` del módulo Bitbucket sin cambios.
 
 ### `withGlobalTauri: true` en `tauri.conf.json`
 
@@ -138,9 +129,9 @@ Puntos específicos sin resolver:
 
 El binding Bitbucket↔Sonar existe y está verificado por API. Que el comentario de Sonar aparezca en un PR real nunca se probó. Requiere un PR sobre un repositorio bindeado. Depende de dos tickets separados en el tiempo.
 
-### Diálogos del llavero en macOS
+### ~~Diálogos del llavero en macOS~~ — Resuelto en v0.6.3
 
-La medición en desarrollo bajó de 6 a 2 diálogos por sesión. No se confirmó si 2 es el mínimo real o siguen duplicados. Verificar con el binario compilado e instalado, no en modo dev.
+Los 4 diálogos al iniciar la app instalada quedaron en 0 al arrancar y máximo 2 en el primer uso (uno por ítem del Keychain). Ver entrada en HISTORIAL.md v0.6.3.
 
 ### AppImage en Linux con D-Bus
 
@@ -157,6 +148,6 @@ El origen y la licencia no están confirmados. La app se distribuye a ~15 person
 | Módulo | No tocar sin coordinar |
 |---|---|
 | Clusters | `GlobalConsole.tsx`, `CollapsibleSection.tsx`, `ui.tsx`, `index.css` |
-| Bitbucket | `bitbucket/credentials.rs` hasta que CI/CD haga la migración al helper |
+| Bitbucket | Sin restricciones activas. `credentials.rs` ya usa `llavero.rs` (v0.6.3). |
 | CI/CD | `CollapsibleSection.tsx` — el cambio de `overflow-hidden` es suyo y los otros dependen de él |
 | Todos | `lib.rs`, `modules/mod.rs` — nunca entregar completos |

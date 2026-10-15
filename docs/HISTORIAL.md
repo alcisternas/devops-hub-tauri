@@ -10,6 +10,44 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.3
+
+**Corregido**
+
+- **Diálogos duplicados del Keychain al iniciar la app instalada.** `App.tsx` monta todos los módulos al arrancar con CSS, por lo que dos instancias de `CredentialsPanel` (módulo Bitbucket + CI/CD `SubirPanel`) quedaban activas al inicio. Sin caché en `bitbucket/credentials.rs`, cada una leía el Keychain por separado: 2 diálogos al arrancar y 2 más al entrar al módulo.
+  - `bitbucket/credentials.rs` migrado a `llavero.rs`: la caché con Mutex garantiza una sola lectura al Keychain por sesión desde cualquier módulo.
+  - `CredentialsPanel` respeta el prop `activo` y comparte `estadoCompartido` entre instancias, igual que `SonarCredentialsPanel` desde v0.5.0.
+  - Resultado: 0 diálogos al iniciar; máximo 2 al entrar por primera vez a Bitbucket (uno por ítem del Keychain: Bitbucket y Sonar), y 0 en adelante al elegir "Permitir siempre".
+
+---
+
+## 0.6.2
+
+**Corregido**
+
+- **La app instalada desde Finder reportaba "Faltan herramientas del sistema"** aunque `aws`, `gcloud` y `kubectl` estaban instalados. macOS lanza las apps GUI con el PATH mínimo del sistema (`/usr/bin:/bin`), sin las rutas del shell del usuario. En modo dev no se manifestaba porque la app se lanzaba desde terminal. Función `ampliar_path()` en `lib.rs` prepende `/opt/homebrew/bin`, `/usr/local/bin` y `~/.local/bin` al iniciar, antes de que Tauri arranque sus hilos.
+
+---
+
+## 0.6.1
+
+Sin cambios funcionales. Bump de versión de mantenimiento sobre 0.6.0.
+
+---
+
+## 0.6.0
+
+Módulo SonarQube Cloud integrado al flujo de creación de repositorios de Bitbucket.
+
+**Agregado**
+
+- Módulo Sonar: credenciales en el llavero (`devops-hub-sonarqube`), validación contra la API de SonarQube Cloud y creación de proyectos.
+- Helper `llavero.rs` compartido para acceso al Keychain del SO, con caché en memoria y protección con Mutex.
+- `SonarCredentialsPanel` con caché de módulo y respeto al prop `activo`.
+- Binding Bitbucket↔Sonar en el flujo de creación de repositorios: si la casilla está marcada y el token es válido, se crea el proyecto en Sonar junto con el repositorio en Bitbucket.
+
+---
+
 ## 0.5.2
 
 **Corregido**
@@ -314,9 +352,9 @@ documentos de traspaso; si hace falta, está en el historial del repositorio.
 
 | Versión | Contenido |
 |---|---|
-| 0.6.0 | Fase C — lanzamiento del job de Jenkins y seguimiento del resultado |
-| 0.7.0 | Fase D — Spinnaker: inicio de sesión, resolución de accounts y creación de aplicaciones y pipelines |
-| 0.8.0 | Fase E — una sola acción que encadena las tres, previo resumen detallado |
+| 0.7.0 | CI/CD Fase C — Jenkins |
+| 0.8.0 | CI/CD Fase D — Spinnaker |
+| 0.9.0 | CI/CD Fase E — encadenado |
 
 **Fuera de esta secuencia**
 
