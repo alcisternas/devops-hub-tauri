@@ -48,7 +48,9 @@ pub struct GcpCountryConfig {
 
 fn default_gcp_chile() -> GcpCountryConfig {
     GcpCountryConfig {
-        account: "eb_acisternasg@bancoripley.cl".to_string(),
+        // Vacío a propósito: cada usuario ingresa su cuenta al primer login.
+        // El org_id es de la organización y vale para todos.
+        account: "".to_string(),
         org_id: "662536622727".to_string(),
     }
 }
@@ -270,6 +272,17 @@ pub fn accounts_file_path(app: &AppHandle) -> Result<PathBuf, RefreshError> {
         .app_data_dir()
         .map_err(|e| RefreshError::new("resolver_ruta", e.to_string()))?;
     Ok(dir.join("accounts.json"))
+}
+
+pub fn save_accounts(app: &AppHandle, config: &AccountsConfig) -> Result<(), RefreshError> {
+    let path = accounts_file_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| RefreshError::new("crear_directorio", e.to_string()))?;
+    }
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| RefreshError::new("serializar_json", e.to_string()))?;
+    fs::write(&path, json).map_err(|e| RefreshError::new("escribir_archivo", e.to_string()))
 }
 
 pub fn load_or_create_accounts(app: &AppHandle) -> Result<AccountsConfig, RefreshError> {

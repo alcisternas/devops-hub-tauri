@@ -10,6 +10,14 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.7
+
+**Corregido**
+
+- **Cuenta GCP hardcodeada en instalaciones nuevas.** `default_gcp_chile()` en `eks/config.rs` tenía la cuenta del desarrollador (`eb_acisternasg@bancoripley.cl`) como valor por defecto. Al instalar la app por primera vez, `load_or_create_accounts` creaba `accounts.json` con esa cuenta y el módulo Clusters intentaba autenticar a otro usuario con ella. Cambios: `account` pasa a `""` en el default; `setup_gcloud_login` detecta cuenta vacía y hace `gcloud auth login` sin `--account` (el usuario elige en el navegador), luego lee la cuenta activa con `gcloud config get-value account` y la guarda en `accounts.json` mediante la nueva función `save_accounts`. Las instalaciones existentes con cuenta ya guardada no se ven afectadas.
+
+---
+
 ## 0.6.6
 
 **Corregido**

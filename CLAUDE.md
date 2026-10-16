@@ -54,7 +54,7 @@ src-tauri/src/modules/system.rs    ← check_dependencies, propósito general
 8. **Avisar antes de tocar cualquier archivo fuera de la carpeta del módulo propio.**
 9. **Español latinoamericano neutro, sin voseo.**
 10. **Entregar en zip con la estructura de carpetas armada** cuando hay más de un archivo.
-11. **Actualizar la documentación después de cada cambio**, en el mismo commit o en el inmediatamente siguiente. Mínimo: tabla de versiones y entrada en `docs/HISTORIAL.md`. Si el cambio introduce un patrón nuevo, un error conocido o modifica un contrato entre módulos, actualizar también la sección correspondiente de `CLAUDE.md` y `docs/CONTRATOS.md`.
+11. **Actualizar la documentación en el mismo commit que el cambio**, nunca después en un commit separado. Mínimo: tabla de versiones en `CLAUDE.md` y entrada en `docs/HISTORIAL.md`. Si el cambio introduce un patrón nuevo, un error conocido o modifica un contrato entre módulos, actualizar también la sección correspondiente de `CLAUDE.md` y `docs/CONTRATOS.md`. El orden es: editar código → editar docs → `cargo check` / `tsc` → commit único.
 
 ---
 
@@ -82,6 +82,7 @@ Versiones publicadas:
 | 0.6.4 | README e instrucciones de instalación por plataforma; bump CI Node.js 22 |
 | 0.6.5 | Fix PATH en Windows para detectar gcloud y AWS CLI |
 | 0.6.6 | Fix invocación de gcloud en Windows (usar gcloud.cmd, no gcloud) |
+| 0.6.7 | Fix cuenta GCP hardcodeada en instalaciones nuevas; login libre en primer uso |
 
 Versiones planificadas:
 
@@ -174,6 +175,7 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **Voseo en textos de interfaz**: prohibido. Español latinoamericano neutro.
 - **PATH en app instalada (macOS/Linux)**: macOS y Linux lanzan las apps GUI con PATH mínimo del sistema (`/usr/bin:/bin`). `aws`, `gcloud`, `kubectl` instalados en `/opt/homebrew/bin` o `/usr/local/bin` no se encuentran. → `ampliar_path()` en `lib.rs` lo corrige al iniciar antes de que Tauri arranque sus hilos. El bug **no aparece en `npm run tauri dev`** — probar siempre con el binario instalado antes de cada release.
 - **PATH en app instalada (Windows)**: `ampliar_path()` era no-op en Windows. Explorer hereda el PATH del momento en que arrancó, así que `gcloud` instalado después o en otra sesión de consola no era visible. → Implementar `ampliar_path()` para Windows agregando `%APPDATA%\gcloud`, `%LOCALAPPDATA%\Google\Cloud SDK\...\bin`, rutas de sistema de gcloud y `C:\Program Files\Amazon\AWSCLIV2`. El bug **no aparece en `npm run tauri dev`** — mismo patrón que el de macOS/Linux.
+- **Cuenta GCP hardcodeada en `default_gcp_chile()`**: `eks/config.rs` tenía la cuenta del desarrollador en el valor por defecto. Cualquier instalación nueva heredaba esa cuenta al crear `accounts.json` por primera vez. → Dejar `account: ""` en el default; en `setup_gcloud_login`, si la cuenta está vacía, hacer `gcloud auth login` sin `--account` (el usuario elige en el navegador), leer la cuenta activa con `gcloud config get-value account` y guardarla en `accounts.json` para las siguientes sesiones.
 - **`gcloud` en Windows no es ejecutable directamente**: la carpeta `bin` del SDK contiene tres archivos con el mismo nombre base — `gcloud` (script Unix sin extensión), `gcloud.cmd` y `gcloud.ps1`. `CreateProcess` de Windows encuentra el script Unix y no puede ejecutarlo. El wrapper real es `gcloud.cmd`. → Definir `GCLOUD_BIN` en `gke/mod.rs` con `#[cfg]` y usarlo en todos los archivos que invoquen gcloud (`gke/login.rs`, `gke/discovery.rs`, `gke/test_cluster.rs`, `cicd/subnets.rs`). Lo mismo aplica a cualquier herramienta que tenga un wrapper `.cmd` en Windows — no asumir que el nombre sin extensión funciona.
 - **Diálogos duplicados del Keychain**: `App.tsx` monta todos los módulos al iniciar, incluyendo `CredentialsPanel` dos veces (Bitbucket + CI/CD `SubirPanel`). Sin caché, cada instancia leía el Keychain por separado. → `bitbucket/credentials.rs` migrado a `llavero.rs` (caché en memoria); `CredentialsPanel` respeta `activo` y comparte `estadoCompartido` entre instancias. Mismo patrón que `SonarCredentialsPanel`.
 

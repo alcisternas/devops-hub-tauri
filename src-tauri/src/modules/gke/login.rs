@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::process::Command as StdCommand;
 use tauri::AppHandle;
 
-use crate::modules::eks::config::{load_or_create_accounts, RefreshError};
+use crate::modules::eks::config::{load_or_create_accounts, save_accounts, RefreshError};
 
 // A diferencia de AWS SSO, gcloud guarda las credenciales en
 // ~/.config/gcloud/credentials.db y las renueva automáticamente — no hay
@@ -37,6 +37,39 @@ pub(crate) fn run_gcloud_login(account: &str) -> Result<(), RefreshError> {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         Err(RefreshError::new("gcloud_auth_login", stderr))
     }
+}
+
+// Primera instalación: no hay cuenta guardada. Abre el navegador sin
+// restringir la cuenta — el usuario elige la suya — y devuelve la que
+// quedó activa para guardarla en accounts.json.
+fn run_gcloud_login_any() -> Result<(), RefreshError> {
+    let output = StdCommand::new(super::GCLOUD_BIN)
+        .args(["auth", "login"])
+        .output()
+        .map_err(|e| RefreshError::new("gcloud_auth_login", e.to_string()))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(RefreshError::new("gcloud_auth_login", stderr))
+    }
+}
+
+fn get_active_gcloud_account() -> Result<String, RefreshError> {
+    let output = StdCommand::new(super::GCLOUD_BIN)
+        .args(["config", "get-value", "account"])
+        .output()
+        .map_err(|e| RefreshError::new("leer_cuenta_gcloud", e.to_string()))?;
+
+    let account = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if account.is_empty() || account == "(unset)" {
+        return Err(RefreshError::new(
+            "leer_cuenta_gcloud",
+            "No se pudo determinar la cuenta activa después del login.",
+        ));
+    }
+    Ok(account)
 }
 
 fn set_active_account(account: &str) -> Result<(), RefreshError> {
@@ -84,8 +117,17 @@ pub struct GcpLoginResult {
 
 #[tauri::command]
 pub async fn setup_gcloud_login(app: AppHandle) -> Result<GcpLoginResult, RefreshError> {
-    let accounts_cfg = load_or_create_accounts(&app)?;
+    let mut accounts_cfg = load_or_create_accounts(&app)?;
     let account = accounts_cfg.gcp.chile.account.clone();
+
+    // Primera instalación: cuenta vacía → login libre, luego guardar la cuenta.
+    if account.is_empty() {
+        run_gcloud_login_any()?;
+        let detected = get_active_gcloud_account()?;
+        accounts_cfg.gcp.chile.account = detected.clone();
+        save_accounts(&app, &accounts_cfg)?;
+        return Ok(GcpLoginResult { reused_session: false, account: detected });
+    }
 
     let reused_session = ensure_gcp_session(&account)?;
 
