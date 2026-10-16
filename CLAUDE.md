@@ -78,6 +78,8 @@ Versiones publicadas:
 | 0.6.0 | SonarQube Cloud integrado a Bitbucket |
 | 0.6.2 | Fix PATH en app instalada (macOS/Linux) |
 | 0.6.3 | Fix diálogos duplicados del Keychain al iniciar |
+| 0.6.4 | README e instrucciones de instalación por plataforma; bump CI Node.js 22 |
+| 0.6.5 | Fix PATH en Windows para detectar gcloud y AWS CLI |
 
 Versiones planificadas:
 
@@ -168,7 +170,8 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **Balanceador de llaves propio** no detecta errores de tipos ni de borrow-checker. No es sustituto de `cargo check` o `tsc`.
 - **`borrar()` en el llavero debe ser idempotente**: `NoEntry` es éxito, no error.
 - **Voseo en textos de interfaz**: prohibido. Español latinoamericano neutro.
-- **PATH en app instalada**: macOS y Linux lanzan las apps GUI con PATH mínimo del sistema (`/usr/bin:/bin`). `aws`, `gcloud`, `kubectl` instalados en `/opt/homebrew/bin` o `/usr/local/bin` no se encuentran. → `ampliar_path()` en `lib.rs` lo corrige al iniciar antes de que Tauri arranque sus hilos. El bug **no aparece en `npm run tauri dev`** — probar siempre con el binario instalado antes de cada release.
+- **PATH en app instalada (macOS/Linux)**: macOS y Linux lanzan las apps GUI con PATH mínimo del sistema (`/usr/bin:/bin`). `aws`, `gcloud`, `kubectl` instalados en `/opt/homebrew/bin` o `/usr/local/bin` no se encuentran. → `ampliar_path()` en `lib.rs` lo corrige al iniciar antes de que Tauri arranque sus hilos. El bug **no aparece en `npm run tauri dev`** — probar siempre con el binario instalado antes de cada release.
+- **PATH en app instalada (Windows)**: `ampliar_path()` era no-op en Windows. Explorer hereda el PATH del momento en que arrancó, así que `gcloud` instalado después o en otra sesión de consola no era visible. → Implementar `ampliar_path()` para Windows agregando `%APPDATA%\gcloud`, `%LOCALAPPDATA%\Google\Cloud SDK\...\bin`, rutas de sistema de gcloud y `C:\Program Files\Amazon\AWSCLIV2`. El bug **no aparece en `npm run tauri dev`** — mismo patrón que el de macOS/Linux.
 - **Diálogos duplicados del Keychain**: `App.tsx` monta todos los módulos al iniciar, incluyendo `CredentialsPanel` dos veces (Bitbucket + CI/CD `SubirPanel`). Sin caché, cada instancia leía el Keychain por separado. → `bitbucket/credentials.rs` migrado a `llavero.rs` (caché en memoria); `CredentialsPanel` respeta `activo` y comparte `estadoCompartido` entre instancias. Mismo patrón que `SonarCredentialsPanel`.
 
 ---

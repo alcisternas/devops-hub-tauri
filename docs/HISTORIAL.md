@@ -10,6 +10,25 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.5
+
+**Corregido**
+
+- **La app en Windows no detectaba `gcloud` instalado vía consola.** `ampliar_path()` era un no-op en Windows. Explorer hereda el PATH del momento en que arrancó, por lo que herramientas instaladas después de iniciar sesión (o en otra sesión de consola) no son visibles para apps lanzadas desde el escritorio. La versión Windows de `ampliar_path()` agrega `%APPDATA%\gcloud`, `%APPDATA%\gcloud\bin` (instalador por consola / winget), `%LOCALAPPDATA%\Google\Cloud SDK\google-cloud-sdk\bin` (instalador interactivo), rutas de sistema de gcloud (`Program Files` x86 y x64) y `C:\Program Files\Amazon\AWSCLIV2`.
+
+---
+
+## 0.6.4
+
+Sin cambios funcionales. Release que publica las instrucciones de instalación por plataforma en el README y en el cuerpo del release de GitHub.
+
+**Documentación**
+
+- README: sección Módulos al día (Clusters, Bitbucket, CI/CD completos); nueva sección Instalación con el workaround `xattr` para macOS, SmartScreen para Windows y `chmod` para Linux; sección Estado refleja v0.6.3 y roadmap 0.7.0–0.8.0.
+- release.yml: `releaseBody` con instrucciones de instalación por plataforma; bump a `actions/checkout@v5`, `actions/setup-node@v5` y `node-version: 22`.
+
+---
+
 ## 0.6.3
 
 **Corregido**
