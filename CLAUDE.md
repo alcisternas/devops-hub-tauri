@@ -81,6 +81,7 @@ Versiones publicadas:
 | 0.6.3 | Fix diálogos duplicados del Keychain al iniciar |
 | 0.6.4 | README e instrucciones de instalación por plataforma; bump CI Node.js 22 |
 | 0.6.5 | Fix PATH en Windows para detectar gcloud y AWS CLI |
+| 0.6.6 | Fix invocación de gcloud en Windows (usar gcloud.cmd, no gcloud) |
 
 Versiones planificadas:
 
@@ -173,6 +174,7 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **Voseo en textos de interfaz**: prohibido. Español latinoamericano neutro.
 - **PATH en app instalada (macOS/Linux)**: macOS y Linux lanzan las apps GUI con PATH mínimo del sistema (`/usr/bin:/bin`). `aws`, `gcloud`, `kubectl` instalados en `/opt/homebrew/bin` o `/usr/local/bin` no se encuentran. → `ampliar_path()` en `lib.rs` lo corrige al iniciar antes de que Tauri arranque sus hilos. El bug **no aparece en `npm run tauri dev`** — probar siempre con el binario instalado antes de cada release.
 - **PATH en app instalada (Windows)**: `ampliar_path()` era no-op en Windows. Explorer hereda el PATH del momento en que arrancó, así que `gcloud` instalado después o en otra sesión de consola no era visible. → Implementar `ampliar_path()` para Windows agregando `%APPDATA%\gcloud`, `%LOCALAPPDATA%\Google\Cloud SDK\...\bin`, rutas de sistema de gcloud y `C:\Program Files\Amazon\AWSCLIV2`. El bug **no aparece en `npm run tauri dev`** — mismo patrón que el de macOS/Linux.
+- **`gcloud` en Windows no es ejecutable directamente**: la carpeta `bin` del SDK contiene tres archivos con el mismo nombre base — `gcloud` (script Unix sin extensión), `gcloud.cmd` y `gcloud.ps1`. `CreateProcess` de Windows encuentra el script Unix y no puede ejecutarlo. El wrapper real es `gcloud.cmd`. → Definir `GCLOUD_BIN` en `gke/mod.rs` con `#[cfg]` y usarlo en todos los archivos que invoquen gcloud (`gke/login.rs`, `gke/discovery.rs`, `gke/test_cluster.rs`, `cicd/subnets.rs`). Lo mismo aplica a cualquier herramienta que tenga un wrapper `.cmd` en Windows — no asumir que el nombre sin extensión funciona.
 - **Diálogos duplicados del Keychain**: `App.tsx` monta todos los módulos al iniciar, incluyendo `CredentialsPanel` dos veces (Bitbucket + CI/CD `SubirPanel`). Sin caché, cada instancia leía el Keychain por separado. → `bitbucket/credentials.rs` migrado a `llavero.rs` (caché en memoria); `CredentialsPanel` respeta `activo` y comparte `estadoCompartido` entre instancias. Mismo patrón que `SonarCredentialsPanel`.
 
 ---

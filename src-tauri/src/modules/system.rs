@@ -23,7 +23,11 @@ pub struct DependenciesCheckResult {
 }
 
 fn check_tool(name: &str, version_args: &[&str]) -> (bool, Option<String>) {
-    match Command::new(name).args(version_args).output() {
+    #[cfg(target_os = "windows")]
+    let bin = if name == "gcloud" { "gcloud.cmd" } else { name };
+    #[cfg(not(target_os = "windows"))]
+    let bin = name;
+    match Command::new(bin).args(version_args).output() {
         Ok(o) if o.status.success() => {
             let out = String::from_utf8_lossy(&o.stdout);
             let err = String::from_utf8_lossy(&o.stderr);

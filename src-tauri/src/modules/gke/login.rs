@@ -10,7 +10,7 @@ use crate::modules::eks::config::{load_or_create_accounts, RefreshError};
 // [sso-session] ni [profile]). Solo verificar/disparar el login.
 
 fn check_gcloud_token(account: &str) -> Option<String> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args(["auth", "print-access-token", "--account", account, "--format", "value(token)"])
         .output()
         .ok()?;
@@ -26,7 +26,7 @@ fn check_gcloud_token(account: &str) -> Option<String> {
 }
 
 pub(crate) fn run_gcloud_login(account: &str) -> Result<(), RefreshError> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args(["auth", "login", account])
         .output()
         .map_err(|e| RefreshError::new("gcloud_auth_login", e.to_string()))?;
@@ -40,7 +40,7 @@ pub(crate) fn run_gcloud_login(account: &str) -> Result<(), RefreshError> {
 }
 
 fn set_active_account(account: &str) -> Result<(), RefreshError> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args(["config", "set", "account", account])
         .output()
         .map_err(|e| RefreshError::new("gcloud_config_set_account", e.to_string()))?;

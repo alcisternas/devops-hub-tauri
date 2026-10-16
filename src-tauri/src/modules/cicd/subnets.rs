@@ -218,7 +218,11 @@ fn parece_sesion_vencida(texto: &str) -> bool {
 }
 
 async fn consultar_proyecto(proyecto: &str, cuenta: &str) -> Result<Vec<Subnet>, String> {
-    let salida = tokio::process::Command::new("gcloud")
+    #[cfg(target_os = "windows")]
+    const GCLOUD_BIN: &str = "gcloud.cmd";
+    #[cfg(not(target_os = "windows"))]
+    const GCLOUD_BIN: &str = "gcloud";
+    let salida = tokio::process::Command::new(GCLOUD_BIN)
         .args([
             "compute",
             "networks",

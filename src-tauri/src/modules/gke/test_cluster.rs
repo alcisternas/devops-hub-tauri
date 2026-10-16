@@ -14,7 +14,7 @@ use crate::modules::eks::permissions::{build_kargs, read_server_and_ca, run_perm
 // ─────────────────────────────────────────────────────────────────────────
 
 pub(crate) fn set_active_project(project_id: &str, account: &str) -> Result<(), RefreshError> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args(["config", "set", "project", project_id, "--account", account])
         .output()
         .map_err(|e| RefreshError::new("set_active_project", e.to_string()))?;
@@ -34,7 +34,7 @@ pub(crate) struct GkeClusterInfo {
 }
 
 pub(crate) fn list_clusters_for_project(project_id: &str, account: &str) -> Result<Vec<GkeClusterInfo>, RefreshError> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args([
             "container",
             "clusters",
@@ -77,7 +77,7 @@ pub(crate) fn list_clusters_for_project(project_id: &str, account: &str) -> Resu
 // ─────────────────────────────────────────────────────────────────────────
 
 pub(crate) fn gke_get_credentials(cluster_name: &str, location: &str, project_id: &str, account: &str) -> Result<(), RefreshError> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args([
             "container",
             "clusters",
@@ -134,7 +134,7 @@ pub(crate) fn rename_context_to_alias(project_id: &str, location: &str, cluster_
 // Token OAuth de la cuenta activa — a diferencia de AWS, sirve para
 // cualquier cluster GKE, no hay que pedirlo por-cluster.
 pub(crate) fn get_gcp_token() -> Option<String> {
-    let output = StdCommand::new("gcloud")
+    let output = StdCommand::new(super::GCLOUD_BIN)
         .args(["auth", "print-access-token", "--format", "value(token)"])
         .output()
         .ok()?;

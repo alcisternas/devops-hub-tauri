@@ -10,6 +10,14 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.6
+
+**Corregido**
+
+- **`gcloud` no se podía ejecutar en Windows aunque estuviera en el PATH.** La carpeta `bin` del SDK contiene tres archivos: `gcloud` (script de shell Unix, sin extensión), `gcloud.cmd` y `gcloud.ps1`. `CreateProcess` de Windows encuentra el script Unix primero — porque está en PATH — pero no puede ejecutarlo al no tener extensión reconocida. El wrapper que realmente funciona en Windows es `gcloud.cmd`. Se define la constante `GCLOUD_BIN` en `gke/mod.rs` con `#[cfg(target_os = "windows")]` y se aplica a todos los sitios que invocan gcloud: `gke/login.rs` (3 llamadas), `gke/discovery.rs` (1), `gke/test_cluster.rs` (4) y `cicd/subnets.rs` (1, constante local ya que es un módulo distinto). `system.rs` (`check_dependencies`) también corregido para mostrar correctamente si gcloud está disponible. En macOS y Linux el comportamiento es idéntico al anterior.
+
+---
+
 ## 0.6.5
 
 **Corregido**

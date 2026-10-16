@@ -19,7 +19,7 @@ fn contains_reauth_signal(text: &str) -> bool {
 }
 
 fn run_list_projects(account: &str) -> (bool, String, String) {
-    match StdCommand::new("gcloud")
+    match StdCommand::new(super::GCLOUD_BIN)
         .args([
             "projects",
             "list",
