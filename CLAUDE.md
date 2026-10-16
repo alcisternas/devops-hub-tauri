@@ -83,6 +83,7 @@ Versiones publicadas:
 | 0.6.5 | Fix PATH en Windows para detectar gcloud y AWS CLI |
 | 0.6.6 | Fix invocación de gcloud en Windows (usar gcloud.cmd, no gcloud) |
 | 0.6.7 | Fix cuenta GCP hardcodeada en instalaciones nuevas; login libre en primer uso |
+| 0.6.8 | Fix sesión GCP en Windows: eliminar --format value(token) y set_active_account |
 
 Versiones planificadas:
 

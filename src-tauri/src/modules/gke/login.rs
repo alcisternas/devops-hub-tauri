@@ -11,7 +11,7 @@ use crate::modules::eks::config::{load_or_create_accounts, save_accounts, Refres
 
 fn check_gcloud_token(account: &str) -> Option<String> {
     let output = StdCommand::new(super::GCLOUD_BIN)
-        .args(["auth", "print-access-token", "--account", account, "--format", "value(token)"])
+        .args(["auth", "print-access-token", "--account", account])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -39,9 +39,9 @@ pub(crate) fn run_gcloud_login(account: &str) -> Result<(), RefreshError> {
     }
 }
 
-// Primera instalación: no hay cuenta guardada. Abre el navegador sin
-// restringir la cuenta — el usuario elige la suya — y devuelve la que
-// quedó activa para guardarla en accounts.json.
+// Primera instalación o cuenta vencida: abre el navegador sin restringir la
+// cuenta — el usuario elige la suya — y devuelve la que quedó activa para
+// guardarla en accounts.json.
 fn run_gcloud_login_any() -> Result<(), RefreshError> {
     let output = StdCommand::new(super::GCLOUD_BIN)
         .args(["auth", "login"])
@@ -72,41 +72,26 @@ fn get_active_gcloud_account() -> Result<String, RefreshError> {
     Ok(account)
 }
 
-fn set_active_account(account: &str) -> Result<(), RefreshError> {
-    let output = StdCommand::new(super::GCLOUD_BIN)
-        .args(["config", "set", "account", account])
-        .output()
-        .map_err(|e| RefreshError::new("gcloud_config_set_account", e.to_string()))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(RefreshError::new("gcloud_config_set_account", stderr))
-    }
-}
-
-// Garantiza una sesión GCP válida — reutiliza token si es válido, login
-// solo si de verdad hace falta. Extraída para que el módulo load también
-// la use antes de cargar clusters GCP, igual que ensure_chile_sso /
-// ensure_peru_sso para AWS.
+// Verifica si hay un token válido para la cuenta guardada — sin abrir browser
+// ni modificar la config de gcloud. El login interactivo solo ocurre en
+// setup_gcloud_login. Usado por discovery.rs, load/loader.rs y cicd/subnets.rs
+// para confirmar que la sesión sigue vigente antes de invocar gcloud.
 pub(crate) fn ensure_gcp_session(account: &str) -> Result<bool, RefreshError> {
-    if check_gcloud_token(account).is_some() {
-        set_active_account(account)?;
-        return Ok(true); // reused_session
-    }
-
-    run_gcloud_login(account)?;
-    set_active_account(account)?;
-
-    if check_gcloud_token(account).is_none() {
+    if account.is_empty() {
         return Err(RefreshError::new(
-            "validar_token_gcp",
-            "El login se completó pero no se pudo obtener un token de acceso válido.",
+            "cuenta_gcp_no_configurada",
+            "No hay cuenta GCP configurada. Ve a Clusters → GKE Chile para iniciar sesión.",
         ));
     }
 
-    Ok(false) // no se reutilizó, se hizo login recién
+    if check_gcloud_token(account).is_some() {
+        return Ok(true);
+    }
+
+    Err(RefreshError::new(
+        "sesion_gcp_vencida",
+        "La sesión de GCP venció. Ve a Clusters → GKE Chile para renovar el acceso.",
+    ))
 }
 
 #[derive(Debug, Serialize)]
@@ -120,16 +105,19 @@ pub async fn setup_gcloud_login(app: AppHandle) -> Result<GcpLoginResult, Refres
     let mut accounts_cfg = load_or_create_accounts(&app)?;
     let account = accounts_cfg.gcp.chile.account.clone();
 
-    // Primera instalación: cuenta vacía → login libre, luego guardar la cuenta.
-    if account.is_empty() {
-        run_gcloud_login_any()?;
-        let detected = get_active_gcloud_account()?;
-        accounts_cfg.gcp.chile.account = detected.clone();
-        save_accounts(&app, &accounts_cfg)?;
-        return Ok(GcpLoginResult { reused_session: false, account: detected });
+    // Si hay cuenta guardada y el token sigue vigente, reutilizar sesión.
+    if !account.is_empty() {
+        if check_gcloud_token(&account).is_some() {
+            return Ok(GcpLoginResult { reused_session: true, account });
+        }
     }
 
-    let reused_session = ensure_gcp_session(&account)?;
-
-    Ok(GcpLoginResult { reused_session, account })
+    // Sin cuenta O token vencido/inválido → login libre en el navegador.
+    // No se fuerza una cuenta específica: el usuario elige la suya.
+    // Esto también corrige cuentas heredadas de instalaciones anteriores.
+    run_gcloud_login_any()?;
+    let detected = get_active_gcloud_account()?;
+    accounts_cfg.gcp.chile.account = detected.clone();
+    save_accounts(&app, &accounts_cfg)?;
+    Ok(GcpLoginResult { reused_session: false, account: detected })
 }

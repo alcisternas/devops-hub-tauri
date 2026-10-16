@@ -10,6 +10,14 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.8
+
+**Corregido**
+
+- **Sesión GCP se destruía al abrir la app en Windows.** `ensure_gcp_session` llamaba `set_active_account(account)` y `run_gcloud_login(account)` con la cuenta almacenada en `accounts.json`. Si ese valor era incorrecto (cuenta del desarrollador heredada de v0.6.6), el comando `gcloud config set account <cuenta_incorrecta>` pisaba la sesión activa del usuario y `gcloud auth print-access-token` fallaba con "no active account selected". Además, `check_gcloud_token` usaba `--format value(token)` que en Windows produce stdout vacío porque `print-access-token` emite el token como string plano, no como JSON estructurado. Cambios: (1) `check_gcloud_token` elimina el flag `--format value(token)`; (2) `ensure_gcp_session` pasa a ser solo verificación de token — sin `set_active_account` ni `run_gcloud_login` — y devuelve error claro si la sesión no es válida; (3) `setup_gcloud_login` unifica ambos flujos: si el token es válido para la cuenta guardada reutiliza sesión, si no hace login libre en el navegador (sin `--account`) y actualiza `accounts.json` con la cuenta real del usuario; (4) `get_gcp_token` en `test_cluster.rs` también corregido con el mismo fix del flag de formato.
+
+---
+
 ## 0.6.7
 
 **Corregido**

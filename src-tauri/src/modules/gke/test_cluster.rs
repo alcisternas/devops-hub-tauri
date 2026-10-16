@@ -135,7 +135,7 @@ pub(crate) fn rename_context_to_alias(project_id: &str, location: &str, cluster_
 // cualquier cluster GKE, no hay que pedirlo por-cluster.
 pub(crate) fn get_gcp_token() -> Option<String> {
     let output = StdCommand::new(super::GCLOUD_BIN)
-        .args(["auth", "print-access-token", "--format", "value(token)"])
+        .args(["auth", "print-access-token"])
         .output()
         .ok()?;
     if !output.status.success() {
