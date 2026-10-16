@@ -54,6 +54,7 @@ src-tauri/src/modules/system.rs    ← check_dependencies, propósito general
 8. **Avisar antes de tocar cualquier archivo fuera de la carpeta del módulo propio.**
 9. **Español latinoamericano neutro, sin voseo.**
 10. **Entregar en zip con la estructura de carpetas armada** cuando hay más de un archivo.
+11. **Actualizar la documentación después de cada cambio**, en el mismo commit o en el inmediatamente siguiente. Mínimo: tabla de versiones y entrada en `docs/HISTORIAL.md`. Si el cambio introduce un patrón nuevo, un error conocido o modifica un contrato entre módulos, actualizar también la sección correspondiente de `CLAUDE.md` y `docs/CONTRATOS.md`.
 
 ---
 
