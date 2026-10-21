@@ -38,6 +38,13 @@ const TOOLS: Tool[] = [
     desc: "Genera la configuración de Jenkins, Spinnaker y Kubernetes, Cloud Run o Apigee de una solicitud.",
     available: true,
   },
+  {
+    to: "/hardening",
+    icon: "🛡️",
+    title: "Hardening de imágenes",
+    desc: "Analiza una imagen, elige qué conservar según su tipo y genera el Dockerfile endurecido para subirla a ECR.",
+    available: true,
+  },
 ];
 
 export default function Home() {

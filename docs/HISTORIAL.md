@@ -10,6 +10,17 @@ funcionalidad nueva.
 
 ---
 
+## Sin versión asignada (rama local `feat/hardening-imagenes`)
+
+El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
+
+**Agregado**
+
+- **Módulo "Hardening de imágenes" (fase 1).** Recibe la referencia de una imagen pública, la resuelve por digest en el registro, la escanea con Trivy (Docker no hace falta), muestra los componentes que se pueden conservar o quitar según el tipo de imagen (por defecto conserva npm, que las imágenes de desarrollo necesitan), calcula el impacto y el plan de corrección con cada cambio y genera el Dockerfile endurecido (rootfs limpio, `FROM scratch`, con pruebas funcionales), listo para guardar y construir. **No construye ni reescanea todavía**: la pantalla entrega los comandos para construir, verificar y subir a ECR. Es un port a Rust del motor de Container Hardening Studio, verificado contra la salida de su código Python con un escaneo real (9 configuraciones; Dockerfile y huella idénticos). Detalle, decisiones y límites en `docs/TRASPASO-hardening.md`.
+- **Archivos compartidos tocados, con cambios mínimos de líneas:** `src-tauri/src/lib.rs` (6 comandos, el `use` y el `.manage` del estado), `src-tauri/src/modules/mod.rs` (`pub mod hardening;`), `src-tauri/Cargo.toml` (`sha2`), `src/App.tsx` (ruta), `src/components/Layout.tsx` (entrada del menú), `src/modules/clusters/GlobalConsole.tsx` (etiqueta `[Hardening]`) y `src/modules/home/index.tsx` (tarjeta).
+
+---
+
 ## Sin versión asignada (rama local `feat/flujo-tickets-jira`)
 
 El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).

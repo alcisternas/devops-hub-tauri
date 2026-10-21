@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/clusters", label: "Clusters", icon: "☁️" },
   { to: "/bitbucket", label: "Bitbucket", icon: "📦" },
   { to: "/cicd", label: "CI/CD", icon: "🚀" },
+  { to: "/hardening", label: "Hardening", icon: "🛡️" },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

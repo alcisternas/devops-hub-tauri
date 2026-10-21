@@ -28,6 +28,7 @@ App de escritorio nativa (Tauri 2 + React 18 + TypeScript + Rust) para el equipo
 src/modules/clusters/      ← EKS Chile/Perú + GKE + carga kubeconfig
 src/modules/bitbucket/     ← creación de repos, Pipelines, ramas, SonarQube; modo "Desde ticket de Jira"
 src/modules/cicd/          ← generadores CI/CD + subida a Bitbucket (Jenkins y Spinnaker pendientes)
+src/modules/hardening/     ← hardening de imágenes: analiza, elige qué conservar, genera el Dockerfile (fase 1)
 src/modules/home/          ← pantalla de inicio
 
 src-tauri/src/modules/eks/
@@ -37,6 +38,7 @@ src-tauri/src/modules/bitbucket/
 src-tauri/src/modules/sonar/
 src-tauri/src/modules/jira/        ← tickets de altas: lectura, validación, cierre y evidencia (usa el motor de bitbucket/)
 src-tauri/src/modules/cicd/
+src-tauri/src/modules/hardening/   ← port a Rust de Container Hardening Studio; pruebas contra su salida en Python
 src-tauri/src/modules/llavero.rs   ← infraestructura compartida de credenciales
 src-tauri/src/modules/system.rs    ← check_dependencies, propósito general
 ```
@@ -186,6 +188,9 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **La clave del proyecto de Bitbucket no se pasa a mayúsculas**: existe una real en minúsculas (`peru_control_de_cambios`). El campo `projectKey` del modo manual sí la fuerza a mayúsculas; el modo Jira usa la del ticket tal cual.
 - **Etiquetas de Jira**: cualquier texto distinto crea una etiqueta nueva. Solo se agregan `ACN`, `DEVOPS-CHAPTER` y `CHILE`/`PERU` (sin tilde, aunque el campo País diga "Perú").
 - **Tailwind 4 cambia valores por defecto sin avisar**: la fuente del tema (4.3 usa otra lista que Tailwind 3), el cursor de los botones (flecha en vez de mano) y el color de borde. `index.css` conserva los de Tailwind 3 con las que se diseñó la app.
+- **El módulo Hardening es un port verificado, no una reescritura libre.** `testdata/oro.json` lo genera el Python de Studio; si el motor cambia, se regenera y se revisan las diferencias. `workdir` se valida acá (Studio no lo hace) y la cabecera del Dockerfile lleva la firma del hub (la prueba usa la de Studio para comparar la huella).
+- **Trivy corre con entorno mínimo y sin flags que oculten hallazgos** (`--ignore-unfixed`, `--vex`, `--skip-*`): la política bancaria cuenta también lo que no tiene parche.
+- **Docker Scout no se simula.** Está deshabilitado hasta tener una salida SARIF real para probar su lector.
 
 ---
 

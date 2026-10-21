@@ -21,6 +21,7 @@ const MODULE_LABELS: Record<string, string> = {
   load: "[Carga]",
   bitbucket: "[Bitbucket]",
   cicd: "[CI/CD]",
+  hardening: "[Hardening]",
 };
 function modulePrefix(modulo: string): string {
   return MODULE_LABELS[modulo] ?? `[${modulo}]`;

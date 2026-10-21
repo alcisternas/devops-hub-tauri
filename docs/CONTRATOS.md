@@ -49,7 +49,7 @@ Creado por el chat de Clusters. Propósito general.
 
 Archivo de registro de todos los comandos Tauri. **Nadie entrega este archivo completo.** Solo se entregan las líneas a agregar. Razón: entregar el archivo completo sobre una base vieja elimina silenciosamente los comandos de otros módulos sin error de compilación.
 
-Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4), Jira (6).
+Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4), Jira (6), Hardening (6, más el estado `EstadoHardening` en `.manage`).
 
 Comando remanente sin uso en frontend: `get_eks_accounts` — candidato a eliminar.
 
@@ -64,6 +64,8 @@ Mismo criterio que `lib.rs`: solo entregar las líneas a agregar.
 ## Dependencias entre módulos de backend
 
 `jira::procesar` llama directamente a `bitbucket::full_run::bitbucket_crear_repos` y usa `ConfigRun`, `ResumenRun`, `ResultadoRepo`, `repos::verificar`, `repos::rama_desarrollo`, `BBClient` y `bitbucket::credentials::obtener_credenciales`. **Si cambia la firma o los campos de cualquiera de ellos, Jira se rompe** (agregar un campo a `ConfigRun` rompe su constructor en `procesar.rs`). Avisar antes de cambiarlos, igual que con CI/CD.
+
+`hardening` es independiente: no usa código de otros módulos de backend, solo `eks::config::RefreshError` y `eks::permissions::emit_progress`, como el resto. Tampoco los usa nadie más.
 
 ---
 
@@ -81,7 +83,7 @@ Sidebar de la app. Cada módulo agrega su entrada al incorporarse. Coordinación
 
 ### `src/modules/clusters/GlobalConsole.tsx`
 
-Creado por Clusters. Modificado por Bitbucket (etiqueta `bitbucket`) y CI/CD (etiqueta `cicd`, props `collapsed`/`onToggleCollapsed`). Tiene tres dueños implícitos. Coordinar antes de modificar.
+Creado por Clusters. Modificado por Bitbucket (etiqueta `bitbucket`), Hardening (etiqueta `hardening`) y CI/CD (etiqueta `cicd`, props `collapsed`/`onToggleCollapsed`). Tiene tres dueños implícitos. Coordinar antes de modificar.
 
 Para agregar un módulo nuevo al mapa de etiquetas, agregar la entrada en `MODULE_LABELS`:
 ```tsx
@@ -89,6 +91,7 @@ const MODULE_LABELS: Record<string, string> = {
     clusters: "[Clusters]",
     bitbucket: "[Bitbucket]",
     cicd: "[CI/CD]",
+    hardening: "[Hardening]",
     // nuevo: "[NuevoMódulo]"
 };
 ```
@@ -156,5 +159,6 @@ El origen y la licencia no están confirmados. La app se distribuye a ~15 person
 |---|---|
 | Clusters | `GlobalConsole.tsx`, `CollapsibleSection.tsx`, `ui.tsx`, `index.css` |
 | Bitbucket | Sin restricciones activas. `credentials.rs` ya usa `llavero.rs` (v0.6.3). |
+| Hardening | `testdata/oro.json` se genera con el motor de Studio; no se edita a mano (ver `TRASPASO-hardening.md` §2) |
 | CI/CD | `CollapsibleSection.tsx` — el cambio de `overflow-hidden` es suyo y los otros dependen de él |
 | Todos | `lib.rs`, `modules/mod.rs` — nunca entregar completos |

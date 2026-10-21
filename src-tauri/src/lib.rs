@@ -77,6 +77,7 @@ use modules::bitbucket;
 use modules::cicd;
 use modules::eks;
 use modules::gke;
+use modules::hardening;
 use modules::jira;
 use modules::load;
 use modules::sonar;
@@ -105,6 +106,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(eks::sso::ConfigBackupState(std::sync::Mutex::new(false)))
+        .manage(hardening::comandos::EstadoHardening::default())
         .invoke_handler(tauri::generate_handler![
             run_command,
             eks::get_eks_accounts,
@@ -142,7 +144,13 @@ pub fn run() {
             jira::credentials::jira_cred_delete,
             jira::tickets::jira_tickets_pendientes,
             jira::procesar::jira_procesar_ticket,
-            jira::procesar::jira_publicar_evidencia
+            jira::procesar::jira_publicar_evidencia,
+            hardening::comandos::hardening_herramientas,
+            hardening::comandos::hardening_perfiles,
+            hardening::comandos::hardening_analizar,
+            hardening::comandos::hardening_evaluar,
+            hardening::comandos::hardening_generar,
+            hardening::comandos::hardening_guardar
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar la aplicación Tauri");
