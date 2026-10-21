@@ -77,6 +77,7 @@ use modules::bitbucket;
 use modules::cicd;
 use modules::eks;
 use modules::gke;
+use modules::jira;
 use modules::load;
 use modules::sonar;
 use modules::system;
@@ -134,7 +135,14 @@ pub fn run() {
             // ── SonarQube Cloud (v0.6.0) ──
             sonar::credentials::sonar_cred_status,
             sonar::credentials::sonar_cred_save,
-            sonar::credentials::sonar_cred_delete
+            sonar::credentials::sonar_cred_delete,
+            // ── Jira: tickets de altas de repositorios ──
+            jira::credentials::jira_cred_status,
+            jira::credentials::jira_cred_save,
+            jira::credentials::jira_cred_delete,
+            jira::tickets::jira_tickets_pendientes,
+            jira::procesar::jira_procesar_ticket,
+            jira::procesar::jira_publicar_evidencia
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar la aplicación Tauri");
