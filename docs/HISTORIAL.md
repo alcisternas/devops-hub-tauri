@@ -10,6 +10,16 @@ funcionalidad nueva.
 
 ---
 
+## Sin versión asignada (rama local `feat/flujo-tickets-jira`)
+
+El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
+
+**Seguridad**
+
+- **Dependencias de npm con vulnerabilidades conocidas.** `npm audit` reportaba 11 hallazgos (7 altos y 4 moderados) en `vite`, `source-map-js`, `react-router-dom` 6 y la cadena de `tailwindcss` 3. Paso 1: `npm audit fix` (sin saltos mayores) actualiza `vite` y `source-map-js`; `react-router-dom` pasa de 6.30 a 7.18 (solo se usan `HashRouter`, `useLocation`, `NavLink` y `Link`, cuya API no cambia). Verificado con `tsc`, `vite build` y una comparación de estilos computados de las 4 pantallas (431 elementos) antes y después: 0 diferencias.
+
+---
+
 ## 0.6.8
 
 **Corregido**
