@@ -32,6 +32,7 @@ Servicios registrados:
 |---|---|---|---|
 | `devops-hub-bitbucket` | `credenciales` | JSON con `email` y `token` | Bitbucket |
 | `devops-hub-sonarqube` | `token` | Token en texto plano | Sonar |
+| `devops-hub-jira` | `token` | Token en texto plano (Bearer, scopes `read:jira-work` y `write:jira-work`) | Jira |
 | `devops-hub-jenkins` | pendiente | pendiente | CI/CD Fase C |
 
 ---
@@ -48,7 +49,7 @@ Creado por el chat de Clusters. Propósito general.
 
 Archivo de registro de todos los comandos Tauri. **Nadie entrega este archivo completo.** Solo se entregan las líneas a agregar. Razón: entregar el archivo completo sobre una base vieja elimina silenciosamente los comandos de otros módulos sin error de compilación.
 
-Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4).
+Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4), Jira (6).
 
 Comando remanente sin uso en frontend: `get_eks_accounts` — candidato a eliminar.
 
@@ -57,6 +58,12 @@ Comando remanente sin uso en frontend: `get_eks_accounts` — candidato a elimin
 ### `src-tauri/src/modules/mod.rs`
 
 Mismo criterio que `lib.rs`: solo entregar las líneas a agregar.
+
+---
+
+## Dependencias entre módulos de backend
+
+`jira::procesar` llama directamente a `bitbucket::full_run::bitbucket_crear_repos` y usa `ConfigRun`, `ResumenRun`, `ResultadoRepo`, `repos::verificar`, `repos::rama_desarrollo`, `BBClient` y `bitbucket::credentials::obtener_credenciales`. **Si cambia la firma o los campos de cualquiera de ellos, Jira se rompe** (agregar un campo a `ConfigRun` rompe su constructor en `procesar.rs`). Avisar antes de cambiarlos, igual que con CI/CD.
 
 ---
 

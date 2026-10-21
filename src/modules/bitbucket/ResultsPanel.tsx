@@ -16,7 +16,15 @@ function etiquetaEstado(estado: ResultadoRepo["estado"]): string {
   return "error";
 }
 
-export default function ResultsPanel({ resumen }: { resumen: ResumenRun }) {
+// sinSonar: repos de Base de Datos, que no llevan proyecto en SonarQube; el paso
+// manual del widget no aplica y no se muestra.
+export default function ResultsPanel({
+  resumen,
+  sinSonar = false,
+}: {
+  resumen: ResumenRun;
+  sinSonar?: boolean;
+}) {
   const creados = resumen.resultados.filter((r) => r.estado === "creado");
 
   return (
@@ -120,7 +128,7 @@ export default function ResultsPanel({ resumen }: { resumen: ResumenRun }) {
       {/* ── SonarQube: el procedimiento es idéntico para todos, así que se
           explica UNA vez y después se lista la key de cada uno. Con muchos
           repositorios, repetirlo entero por cada uno era inservible. ── */}
-      {creados.length > 0 && (
+      {creados.length > 0 && !sinSonar && (
         <CollapsibleSection
           title="Paso siguiente — SonarQube Cloud"
           subtitle="Manual: el widget de Bitbucket no tiene API"

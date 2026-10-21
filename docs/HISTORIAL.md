@@ -14,6 +14,12 @@ funcionalidad nueva.
 
 El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
 
+**Agregado**
+
+- **Modo "Desde ticket de Jira" en Bitbucket Repo Creator.** Lee los tickets de altas de repositorios asignados a la cuenta del token (estado Asignado o Trabajo en curso), valida el formulario ABM, crea los repositorios con el motor existente (`bitbucket_crear_repos`) y deja el ticket listo: etiquetas, cierre y respuesta al solicitante con las URLs y una imagen de repositorios y ramas. El modo manual queda intacto. Detalle, reglas y verificación en `docs/TRASPASO-jira.md`.
+- **Repositorios de Base de Datos** (campo "Lenguaje / Tecnología" = "Base de Datos") se crean sin Pipelines ni proyecto en SonarQube.
+- **Archivos compartidos tocados, con cambios mínimos de líneas:** `src-tauri/src/lib.rs` (6 comandos nuevos y el `use`) y `src-tauri/src/modules/mod.rs` (`pub mod jira;`). En el módulo propio: `bitbucket/index.tsx`, `bitbucket/shared.ts` y `bitbucket/ResultsPanel.tsx` (prop opcional `sinSonar`).
+
 **Seguridad**
 
 - **Dependencias de npm con vulnerabilidades conocidas.** `npm audit` reportaba 11 hallazgos (7 altos y 4 moderados) en `vite`, `source-map-js`, `react-router-dom` 6 y la cadena de `tailwindcss` 3. Paso 1: `npm audit fix` (sin saltos mayores) actualiza `vite` y `source-map-js`; `react-router-dom` pasa de 6.30 a 7.18 (solo se usan `HashRouter`, `useLocation`, `NavLink` y `Link`, cuya API no cambia). Verificado con `tsc`, `vite build` y una comparación de estilos computados de las 4 pantallas (431 elementos) antes y después: 0 diferencias.

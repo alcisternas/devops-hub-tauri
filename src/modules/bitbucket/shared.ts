@@ -62,6 +62,67 @@ export interface ConfigRun {
   crearSonar: boolean;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Jira — modo "Desde ticket"
+//
+// JiraCredStatus llega en snake_case (igual que SonarCredStatus: en Rust no
+// lleva rename_all). El resto lleva rename_all y llega en camelCase.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface JiraCredStatus {
+  almacen_disponible: boolean;
+  guardadas: boolean;
+  validas: boolean;
+  detalle: string;
+}
+
+export interface TicketPendiente {
+  clave: string;
+  resumen: string;
+  estado: string;
+  etiquetas: string[];
+  proyecto: string | null;
+  projectKey: string | null;
+  projectName: string | null;
+  repos: string[];
+  tipo: string | null;
+  pais: string | null;
+  lenguaje: string | null;
+  esBd: boolean;
+  // Motivos por los que no se puede procesar. Vacío = válido.
+  errores: string[];
+}
+
+export interface EvidenciaRepo {
+  nombre: string;
+  url: string;
+  ramas: string[];
+}
+
+export interface OpcionesProceso {
+  workspace: string;
+  sonar: boolean;
+  etiquetas: boolean;
+  cerrar: boolean;
+}
+
+export interface ResultadoTicket {
+  clave: string;
+  esBd: boolean;
+  resumen: ResumenRun;
+  accionesJira: boolean;
+  motivoSinAcciones: string | null;
+  etiquetasAgregadas: string[];
+  etiquetasError: string | null;
+  cierreEstado: "no_pedido" | "cerrado" | "error" | "omitido";
+  cierreDetalle: string;
+  proyectoEtiqueta: string;
+  ramas: string[];
+  evidencia: EvidenciaRepo[];
+}
+
+export const URL_JIRA = "https://bancoripley1.atlassian.net";
+
 // Mismo patrón de parseo que usa Clusters, para que un error de Rust se
 // muestre igual en todo el hub.
 export function parseErr(err: unknown): string {
