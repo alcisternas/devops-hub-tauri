@@ -282,10 +282,20 @@ export interface DocDockerfile {
   };
 }
 
+export interface DestinoEcr {
+  cuenta: string;
+  region: string;
+  repositorio: string;
+  // vacío: se propone <nombre>-<tag original>-sec
+  tag: string;
+}
+
 export interface ResultadoGeneracion {
   doc: DocDockerfile;
   builder_ref: string;
   etiqueta_sugerida: string;
+  // destino ya resuelto, con el tag completado y validado
+  destino_ecr: DestinoEcr;
   pasos: PasoComando[];
   evaluacion: Evaluacion;
 }
@@ -297,6 +307,15 @@ export interface ResultadoGeneracion {
 export const PLATAFORMAS = ["linux/amd64", "linux/arm64"] as const;
 
 export const URL_REGISTRO_NPM = "https://registry.npmjs.org/";
+
+// Valores del procedimiento del equipo para subir imágenes securitizadas
+// (cuenta CORE-AWS-SHARED-SERVICES-CL); editables en pantalla.
+export const DESTINO_ECR_INICIAL: DestinoEcr = {
+  cuenta: "841964127262",
+  region: "us-east-1",
+  repositorio: "ecr-base-image",
+  tag: "",
+};
 
 export const SEVERIDADES: Severidad[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
 

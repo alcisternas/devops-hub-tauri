@@ -12,9 +12,11 @@ import ImpactoPanel from "./ImpactoPanel";
 import DockerfilePanel from "./DockerfilePanel";
 import HallazgosTabla from "./HallazgosTabla";
 import {
+  DESTINO_ECR_INICIAL,
   URL_REGISTRO_NPM,
   parseErr,
   type ConfigHardening,
+  type DestinoEcr,
   type Evaluacion,
   type Herramientas,
   type Perfil,
@@ -53,6 +55,7 @@ function Contenido() {
 
   const [npmRegistry, setNpmRegistry] = useState(URL_REGISTRO_NPM);
   const [pruebasRed, setPruebasRed] = useState(true);
+  const [destino, setDestino] = useState<DestinoEcr>(DESTINO_ECR_INICIAL);
   const [generando, setGenerando] = useState(false);
   const [generado, setGenerado] = useState<ResultadoGeneracion | null>(null);
   const [errorGenerar, setErrorGenerar] = useState("");
@@ -135,6 +138,7 @@ function Contenido() {
         config,
         npmRegistry: npmRegistry.trim() || null,
         pruebasRed,
+        destinoEcr: destino,
       });
       setGenerado(g);
     } catch (e) {
@@ -157,6 +161,18 @@ function Contenido() {
       setGuardando(false);
     }
   }
+
+  // Cambiar el destino invalida lo generado: el script y los comandos llevan esos valores.
+  function cambiarDestino(d: DestinoEcr) {
+    setDestino(d);
+    setGenerado(null);
+    setRuta("");
+  }
+
+  // Mismo criterio que usa Rust cuando el tag queda vacío.
+  const tagSugerido = analisis
+    ? `${analisis.imagen.repository.split("/").pop()}-${analisis.imagen.tag ?? analisis.imagen.manifest_digest.slice(7, 19)}-sec`
+    : "";
 
   // Razón por la que todavía no se puede generar, para mostrarla junto al botón.
   let motivoBloqueo: string | null = null;
@@ -218,6 +234,9 @@ function Contenido() {
                 onNpmRegistry={setNpmRegistry}
                 pruebasRed={pruebasRed}
                 onPruebasRed={setPruebasRed}
+                destino={destino}
+                onDestino={cambiarDestino}
+                tagSugerido={tagSugerido}
                 ruta={ruta}
                 guardando={guardando}
                 onGuardar={guardar}

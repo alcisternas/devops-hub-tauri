@@ -24,6 +24,7 @@ pub mod dockerfile;
 pub mod escaner;
 pub mod impacto;
 pub mod planificador;
+pub mod publicacion;
 pub mod referencia;
 pub mod registro;
 pub mod validar;

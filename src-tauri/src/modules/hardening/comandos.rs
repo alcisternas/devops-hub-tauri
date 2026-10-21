@@ -28,6 +28,7 @@ use super::escaner::{escanear, version_trivy, Escaner, Escaneo, InfoEscaner, Sis
 use super::impacto::{analizar, Analisis};
 use super::planificador::{construir_plan, recomendar, Plan, Recomendacion};
 use super::referencia::parsear_referencia;
+use super::publicacion::{pasos as pasos_publicacion, script as script_publicacion, DestinoEcr, PasoPublicacion};
 use super::registro::{resolver, resolver_constructor, ImagenResuelta};
 
 const MODULO: &str = "hardening";
@@ -55,7 +56,8 @@ struct Sesion {
 #[derive(Clone)]
 struct Generado {
     doc: DocDockerfile,
-    pasos: Vec<PasoComando>,
+    pasos: Vec<PasoPublicacion>,
+    script: String,
 }
 
 #[derive(Default)]
@@ -328,18 +330,14 @@ pub fn hardening_evaluar(estado: State<'_, EstadoHardening>, id_sesion: String, 
 // Generar y guardar
 // ─────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
-pub struct PasoComando {
-    pub titulo: String,
-    pub comando: String,
-}
-
 #[derive(Debug, Serialize)]
 pub struct ResultadoGeneracion {
     pub doc: DocDockerfile,
     pub builder_ref: String,
     pub etiqueta_sugerida: String,
-    pub pasos: Vec<PasoComando>,
+    // Destino en ECR ya resuelto (con el tag completado y validado).
+    pub destino_ecr: DestinoEcr,
+    pub pasos: Vec<PasoPublicacion>,
     pub evaluacion: Evaluacion,
 }
 
@@ -347,23 +345,6 @@ fn etiqueta_sugerida(img: &ImagenResuelta) -> String {
     let nombre = img.repository.rsplit('/').next().unwrap_or("imagen");
     let version = img.tag.clone().unwrap_or_else(|| img.manifest_digest.chars().skip(7).take(12).collect());
     format!("{}:{}-hardened", nombre, version)
-}
-
-// Lo que el usuario ejecuta despues, con Docker, para construir, probar,
-// reescanear y subir a ECR. Esta fase no construye: no hay garantia de que la
-// imagen cumpla hasta que se construya y se reescanee.
-fn pasos_siguientes(etiqueta: &str) -> Vec<PasoComando> {
-    let p = |t: &str, c: String| PasoComando { titulo: t.into(), comando: c };
-    vec![
-        p("1. Pruebas funcionales dentro de la imagen", "docker buildx build --target test --no-cache --build-arg CHS_TEST_NONCE=$(date +%s) .".into()),
-        p("2. Construir la imagen endurecida", format!("docker buildx build --target final --load -t {} .", etiqueta)),
-        p(
-            "3. Reescanear (misma política: sin ignorar hallazgos sin parche)",
-            format!("trivy image --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN --list-all-pkgs --exit-code 1 {}", etiqueta),
-        ),
-        p("4. Iniciar sesión en ECR", "aws ecr get-login-password --region <REGION> | docker login --username AWS --password-stdin <CUENTA>.dkr.ecr.<REGION>.amazonaws.com".into()),
-        p("5. Etiquetar y subir a ECR", format!("docker tag {0} <CUENTA>.dkr.ecr.<REGION>.amazonaws.com/<REPOSITORIO>:{1}\ndocker push <CUENTA>.dkr.ecr.<REGION>.amazonaws.com/<REPOSITORIO>:{1}", etiqueta, etiqueta.split(':').nth(1).unwrap_or("hardened"))),
-    ]
 }
 
 // Comprobaciones previas, antes de gastar red en resolver el constructor.
@@ -390,7 +371,8 @@ fn generar_documento(
     registro: &str,
     pruebas_red: bool,
     nonce: &str,
-) -> Result<ResultadoGeneracion, RefreshError> {
+    destino: &DestinoEcr,
+) -> Result<(ResultadoGeneracion, String), RefreshError> {
     let imagen = &sesion.imagen;
     let origen = ImagenOrigen {
         pinned_ref: imagen.pinned_ref.clone(),
@@ -412,8 +394,12 @@ fn generar_documento(
     .map_err(|e| err("generar", e.to_string()))?;
 
     let etiqueta = etiqueta_sugerida(imagen);
-    let pasos = pasos_siguientes(&etiqueta);
-    Ok(ResultadoGeneracion { doc, builder_ref, etiqueta_sugerida: etiqueta, pasos, evaluacion })
+    let nombre = imagen.repository.rsplit('/').next().unwrap_or("imagen");
+    let tag_origen = imagen.tag.clone().unwrap_or_else(|| imagen.manifest_digest.chars().skip(7).take(12).collect());
+    let destino = destino.resuelto(nombre, &tag_origen).map_err(|m| err("destino_ecr", m))?;
+    let pasos = pasos_publicacion(&etiqueta, &destino);
+    let script = script_publicacion(&etiqueta, &destino, &imagen.pinned_ref, &doc.sha256);
+    Ok((ResultadoGeneracion { doc, builder_ref, etiqueta_sugerida: etiqueta, destino_ecr: destino, pasos, evaluacion }, script))
 }
 
 #[tauri::command]
@@ -424,7 +410,10 @@ pub async fn hardening_generar(
     config: ConfigHardening,
     npm_registry: Option<String>,
     pruebas_red: Option<bool>,
+    destino_ecr: Option<DestinoEcr>,
 ) -> Result<ResultadoGeneracion, RefreshError> {
+    // El destino se valida antes de gastar red.
+    let destino = destino_ecr.unwrap_or_default();
     // Se copia lo necesario de la sesion para no retener el candado durante la red.
     let (evaluacion, nombre_os, plataforma, referencia) = estado.con(&id_sesion, |s| {
         if s.ecosistema != "node" {
@@ -442,8 +431,8 @@ pub async fn hardening_generar(
 
     let registro = npm_registry.unwrap_or_else(|| REGISTRO_NPM_POR_DEFECTO.to_string());
     let resultado = estado.con(&id_sesion, |s| {
-        let r = generar_documento(s, evaluacion, builder_ref, &registro, pruebas_red.unwrap_or(true), &id_nuevo())?;
-        s.generado = Some(Generado { doc: r.doc.clone(), pasos: r.pasos.clone() });
+        let (r, script) = generar_documento(s, evaluacion, builder_ref, &registro, pruebas_red.unwrap_or(true), &id_nuevo(), &destino)?;
+        s.generado = Some(Generado { doc: r.doc.clone(), pasos: r.pasos.clone(), script });
         Ok(r)
     })?;
     emit_progress(MODULO, &app, "Dockerfile generado", &referencia, 2, 2, "ok");
@@ -493,11 +482,19 @@ pub fn hardening_guardar(estado: State<'_, EstadoHardening>, id_sesion: String, 
         }
         escribir(destino.join(rel), contenido)?;
     }
+    escribir(destino.join("publicar.sh"), &generado.script)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let ruta = destino.join("publicar.sh");
+        std::fs::set_permissions(&ruta, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| err("guardar", format!("No se pudo marcar como ejecutable {}: {}", ruta.display(), e)))?;
+    }
     let comandos: Vec<String> = generado.pasos.iter().map(|p| format!("# {}\n{}\n", p.titulo, p.comando)).collect();
     escribir(
         destino.join("COMANDOS.txt"),
         &format!(
-            "Imagen origen: {}\nHuella del Dockerfile (sha256): {}\n\nDesde esta carpeta:\n\n{}",
+            "Imagen origen: {}\nHuella del Dockerfile (sha256): {}\n\nTodo en uno: ./publicar.sh (credenciales de AWS en la terminal).\nO paso a paso, desde esta carpeta:\n\n{}",
             imagen.pinned_ref,
             generado.doc.sha256,
             comandos.join("\n")
@@ -565,10 +562,17 @@ mod pruebas {
         let builder = "docker.io/library/alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
 
         exigir_generable(&r.evaluacion).unwrap();
-        let g = generar_documento(&sesion, evaluar_interno(&sesion, &r.config_inicial).unwrap(), builder.clone(), REGISTRO_NPM_POR_DEFECTO, true, "t1").unwrap();
+        let (g, script) = generar_documento(&sesion, evaluar_interno(&sesion, &r.config_inicial).unwrap(), builder.clone(), REGISTRO_NPM_POR_DEFECTO, true, "t1", &DestinoEcr::default()).unwrap();
         assert!(g.doc.text.contains("FROM scratch AS final"));
         assert_eq!(g.etiqueta_sugerida, "node:26.12.0-alpine3.24-hardened");
-        assert_eq!(g.pasos.len(), 5);
+        assert_eq!(g.pasos.len(), 8);
+        assert_eq!(g.destino_ecr.tag, "node-26.12.0-alpine3.24-sec");
+        assert!(script.contains("841964127262") && script.contains("node-26.12.0-alpine3.24-sec"));
+
+        // Un destino invalido se rechaza sin llegar a generar nada.
+        let malo = DestinoEcr { cuenta: "12".into(), ..DestinoEcr::default() };
+        let ev = evaluar_interno(&sesion, &r.config_inicial).unwrap();
+        assert!(generar_documento(&sesion, ev, builder.clone(), REGISTRO_NPM_POR_DEFECTO, true, "t1", &malo).is_err());
 
         // Un conflicto de configuracion se rechaza antes de tocar la red.
         let mut mala = r.config_inicial.clone();
@@ -596,7 +600,7 @@ mod pruebas {
         let (r, sesion) = construir_analisis(imagen, escaneo).unwrap();
         std::fs::write(format!("{}/analisis.json", dir), serde_json::to_string(&r).unwrap()).unwrap();
         let builder = "docker.io/library/alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
-        let g = generar_documento(&sesion, evaluar_interno(&sesion, &r.config_inicial).unwrap(), builder, REGISTRO_NPM_POR_DEFECTO, true, "demo").unwrap();
+        let (g, _) = generar_documento(&sesion, evaluar_interno(&sesion, &r.config_inicial).unwrap(), builder, REGISTRO_NPM_POR_DEFECTO, true, "demo", &DestinoEcr::default()).unwrap();
         std::fs::write(format!("{}/generacion.json", dir), serde_json::to_string(&g).unwrap()).unwrap();
         std::fs::write(format!("{}/perfiles.json", dir), serde_json::to_string(&perfiles()).unwrap()).unwrap();
 

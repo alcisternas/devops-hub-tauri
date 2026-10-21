@@ -27,8 +27,16 @@ que cumpla la política. La pantalla lo dice y entrega los comandos para hacerlo
    desaparecen, qué se corrige y cómo, bloqueos y alternativas.
 6. **Dockerfile:** rootfs limpio multi-stage terminado en `FROM scratch`, con
    pruebas funcionales dentro de la imagen. Se guarda en
-   `~/devops-hub-hardening/<imagen>-<tag>-<fecha>/` con sus archivos de apoyo y
-   `COMANDOS.txt` (pruebas, construcción, reescaneo y subida a ECR).
+   `~/devops-hub-hardening/<imagen>-<tag>-<fecha>/` con sus archivos de apoyo,
+   `COMANDOS.txt` y **`publicar.sh`**.
+7. **Publicar en ECR (fuera de este equipo):** la carpeta se lleva a un equipo con
+   Docker (BuildKit), AWS CLI y Docker Scout, por ejemplo el Cloud Shell de GCP, y se
+   ejecuta `./publicar.sh`. Sigue el procedimiento manual del equipo
+   (credenciales temporales del access portal, cuenta CORE-AWS-SHARED-SERVICES-CL,
+   Docker Scout como filtro, tag con sufijo `-sec`) y suma dos pasos que ese
+   procedimiento no tenía: pruebas funcionales y comprobar que la imagen no exista ya
+   en ECR. La cuenta, región, repositorio y tag son editables en la pantalla; por
+   defecto `841964127262`, `us-east-1`, `ecr-base-image` y `<nombre>-<tag>-sec`.
 
 Para otros ecosistemas o bases distintas de Alpine se muestra el análisis de
 vulnerabilidades, pero no hay generador (el motivo se explica en pantalla).
@@ -80,6 +88,7 @@ config.rs        configuración, perfiles, normalizar y adaptar a lo que existe
 impacto.rs       validación de coherencia y análisis de impacto
 planificador.rs  plan de remediación, bloqueos, alternativas y recomendaciones
 dockerfile.rs    generador del Dockerfile (rootfs limpio) y su huella
+publicacion.rs   destino de ECR, pasos y script publicar.sh (procedimiento del equipo)
 comandos.rs      comandos Tauri, sesiones en memoria y guardado en disco
 assets/          apply_patches.js y node_suite.js (copiados de Studio)
 testdata/        escaneo real + oro de Python; pruebas_oro.rs los usa
@@ -127,7 +136,13 @@ dependencias).
 - **El veredicto es preliminar.** Con npm conservado suele salir «Probable bloqueo»
   (p. ej. `http-cache-semantics` sin parche); el plan intenta actualizar npm y solo
   el reescaneo de la imagen construida confirma si el hallazgo persiste.
-- **Docker Scout** aparece deshabilitado. Su salida de vulnerabilidades no es JSON
+- **El script no sube nada si falla algo antes:** credenciales de otra cuenta, imagen
+  ya existente en ECR (se distingue `ImageNotFoundException` de un error de permisos),
+  pruebas funcionales fallidas o vulnerabilidades críticas/altas según
+  `docker scout cves --exit-code --only-severity critical,high`. Ese es el filtro del
+  procedimiento del equipo; el análisis de la app (Trivy) es más estricto y también
+  cuenta MEDIUM, LOW y lo que no tiene parche.
+- **Docker Scout como escáner del análisis** aparece deshabilitado. Su salida de vulnerabilidades no es JSON
   como la de Trivy (SARIF, texto, SPDX...); no se escribe un lector sin una salida
   real contra la que probarlo.
 
@@ -135,7 +150,7 @@ dependencias).
 
 ## 5. Verificación realizada
 
-- `cargo check` limpio y 33 pruebas (`cargo test --lib hardening`), incluidas las
+- `cargo check` limpio y 37 pruebas del módulo (`cargo test --lib hardening`), incluidas las
   de equivalencia con Python (9 configuraciones × 2 planes) y rechazo de usuario y
   directorio de trabajo con caracteres peligrosos.
 - Trivy real y Docker Hub real, solo lecturas (ver §2).
@@ -145,9 +160,17 @@ dependencias).
   invalidación al cambiar una casilla. Esa recorrida también confirmó que la
   configuración que arma TypeScript coincide con la que espera Rust.
 - La app Tauri en desarrollo recompila y arranca con el módulo.
+- `publicar.sh`: sintaxis validada con `bash -n` (en una prueba), orden de los pasos
+  (el `push` va después del filtro de Scout) y rechazo de cuenta, región, repositorio
+  o tag con caracteres que romperían el script. Las opciones de Docker Scout se
+  contrastaron con su [referencia oficial](https://docs.docker.io/reference/cli/docker/scout/cves).
 
 ## 6. Lo que NO se ha probado
 
+- **`publicar.sh` ejecutado.** No hay Docker ni acceso a AWS aquí: nunca se corrió
+  de punta a punta. La primera ejecución real, en un equipo con Docker, puede pedir
+  algún ajuste (comportamiento de `docker scout` según la versión, `buildx` en
+  Cloud Shell, instalación de AWS CLI allí).
 - **Construir la imagen, correr las pruebas funcionales dentro de ella y reescanearla.**
   Es la fase 2 y necesita Docker/BuildKit. El Dockerfile es idéntico al de Studio,
   pero aquí nunca se ha construido.
@@ -163,5 +186,7 @@ dependencias).
 - Fase 2: construcción con BuildKit, pruebas, reescaneo con la política y reporte.
 - Docker Scout: pedir una salida real (`docker scout cves registry://node:26.12.0-alpine3.24
   --format sarif --output muestra.sarif.json`) para escribir y probar el lector.
-- Credenciales de registro (ECR privado) y ayuda para subir a ECR desde la app.
+- Credenciales de registro (ECR privado) como origen de imágenes.
+- Si se prefiere Cloud Build en vez de ejecutar el script a mano, generar un
+  `cloudbuild.yaml` con los mismos pasos (necesita decidir cómo se autentica contra AWS).
 - Decidir el número de versión (0.7.0 está reservado para Jenkins).

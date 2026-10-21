@@ -2,7 +2,7 @@ import { useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import CollapsibleSection from "../../components/CollapsibleSection";
 import { Button, ErrorNotice, MetaLine } from "../../components/ui";
-import { digestCorto, type Herramientas, type ResultadoGeneracion } from "./shared";
+import { digestCorto, type DestinoEcr, type Herramientas, type ResultadoGeneracion } from "./shared";
 
 interface Props {
   generado: ResultadoGeneracion | null;
@@ -15,6 +15,10 @@ interface Props {
   onNpmRegistry: (v: string) => void;
   pruebasRed: boolean;
   onPruebasRed: (v: boolean) => void;
+  destino: DestinoEcr;
+  onDestino: (d: DestinoEcr) => void;
+  // Tag que se usará si el campo queda vacío.
+  tagSugerido: string;
   ruta: string;
   guardando: boolean;
   onGuardar: () => void;
@@ -88,6 +92,9 @@ export default function DockerfilePanel({
   onNpmRegistry,
   pruebasRed,
   onPruebasRed,
+  destino,
+  onDestino,
+  tagSugerido,
   ruta,
   guardando,
   onGuardar,
@@ -137,6 +144,37 @@ export default function DockerfilePanel({
         </Button>
       </div>
 
+      <div className="space-y-2">
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Destino en ECR
+        </span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {(
+            [
+              ["cuenta", "Cuenta de AWS", ""],
+              ["region", "Región", ""],
+              ["repositorio", "Repositorio", ""],
+              ["tag", "Tag", tagSugerido],
+            ] as const
+          ).map(([campo, etiqueta, ayuda]) => (
+            <label key={campo} className="flex flex-col gap-1.5 min-w-0">
+              <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
+                {etiqueta}
+              </span>
+              <input
+                value={destino[campo]}
+                onChange={(e) => onDestino({ ...destino, [campo]: e.target.value })}
+                placeholder={ayuda}
+                disabled={generando}
+                spellCheck={false}
+                className="px-3 py-2 rounded-md text-xs outline-hidden"
+                style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text)", fontFamily: "var(--font-mono)" }}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
       {motivoBloqueo && <MetaLine>{motivoBloqueo}</MetaLine>}
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
@@ -180,13 +218,15 @@ export default function DockerfilePanel({
 
           <CollapsibleSection
             title="Siguientes pasos — construir, verificar y subir a ECR"
-            subtitle={herramientas?.docker.instalada ? "Docker detectado" : "Requiere Docker con BuildKit"}
+            subtitle={herramientas?.docker.instalada ? "Docker detectado en este equipo" : "Se ejecutan en un equipo con Docker, por ejemplo Cloud Shell de GCP"}
             defaultOpen
           >
             <div className="space-y-3">
               <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Esta versión genera el Dockerfile pero todavía no construye ni reescanea la imagen: hasta hacerlo no hay garantía de que cumpla la
-                política. Ejecuta estos pasos desde la carpeta guardada, en este orden. Reemplaza los valores entre {"<>"} en los pasos de ECR.
+                Esta versión genera el Dockerfile pero no construye la imagen: hasta construirla y pasar el filtro de Docker Scout no hay garantía de
+                que cumpla. Guarda la carpeta, llévala a un equipo con Docker (BuildKit), AWS CLI y Docker Scout, pega las credenciales de
+                "Claves de acceso" (Opción 1) de la cuenta CORE-AWS-SHARED-SERVICES-CL y ejecuta <span style={{ fontFamily: "var(--font-mono)" }}>./publicar.sh</span>.
+                Hace los mismos pasos de abajo y no sube nada si la imagen ya existe en ECR o si tiene vulnerabilidades críticas o altas.
               </div>
               {generado.pasos.map((p) => (
                 <Comando key={p.titulo} titulo={p.titulo} comando={p.comando} />
