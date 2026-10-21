@@ -178,7 +178,7 @@ export default function LoadTab({ active }: { active: boolean }) {
                   placeholder="Buscar por cuenta, cluster o rol…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-md text-sm outline-none transition-colors"
+                  className="w-full pl-8 pr-3 py-2 rounded-md text-sm outline-hidden transition-colors"
                   style={{
                     background: "var(--surface-raised)",
                     border: "1px solid var(--border-strong)",

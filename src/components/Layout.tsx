@@ -16,11 +16,11 @@ export default function Layout({ children }: { children: ReactNode }) {
   const font = useFontScale();
 
   return (
-    <div className="flex h-screen bg-[var(--bg)] text-[var(--text)]">
-      <aside className="w-56 shrink-0 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col">
-        <div className="px-4 py-4 border-b border-[var(--border)] flex items-baseline justify-between">
+    <div className="flex h-screen bg-(--bg) text-(--text)">
+      <aside className="w-56 shrink-0 border-r border-(--border) bg-(--surface) flex flex-col">
+        <div className="px-4 py-4 border-b border-(--border) flex items-baseline justify-between">
           <span className="font-bold text-sm tracking-wide">
-            DevOps <span className="text-[var(--accent)]">Hub</span>
+            DevOps <span className="text-(--accent)">Hub</span>
           </span>
           <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
             v{APP_VERSION}
@@ -35,8 +35,8 @@ export default function Layout({ children }: { children: ReactNode }) {
               className={({ isActive }) =>
                 `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-[var(--accent-dim)] text-[var(--accent)]"
-                    : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--text)]"
+                    ? "bg-(--accent-dim) text-(--accent)"
+                    : "text-(--text-muted) hover:bg-(--surface-raised) hover:text-(--text)"
                 }`
               }
             >
@@ -45,7 +45,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="px-3 py-3 border-t border-[var(--border)] flex items-center justify-between">
+        <div className="px-3 py-3 border-t border-(--border) flex items-center justify-between">
           <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
             Tamaño de texto
           </span>
@@ -53,7 +53,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <button
               onClick={font.decrease}
               disabled={!font.canDecrease}
-              className="w-6 h-6 rounded bg-[var(--surface-raised)] hover:bg-[var(--border-strong)] disabled:opacity-30 text-xs"
+              className="w-6 h-6 rounded-sm bg-(--surface-raised) hover:bg-(--border-strong) disabled:opacity-30 text-xs"
               style={{ color: "var(--text-muted)" }}
               title="Reducir texto"
             >
@@ -61,7 +61,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </button>
             <button
               onClick={font.reset}
-              className="px-1.5 h-6 rounded bg-[var(--surface-raised)] hover:bg-[var(--border-strong)] text-[10px]"
+              className="px-1.5 h-6 rounded-sm bg-(--surface-raised) hover:bg-(--border-strong) text-[10px]"
               style={{ color: "var(--text-muted)" }}
               title="Restablecer"
             >
@@ -70,7 +70,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <button
               onClick={font.increase}
               disabled={!font.canIncrease}
-              className="w-6 h-6 rounded bg-[var(--surface-raised)] hover:bg-[var(--border-strong)] disabled:opacity-30 text-xs"
+              className="w-6 h-6 rounded-sm bg-(--surface-raised) hover:bg-(--border-strong) disabled:opacity-30 text-xs"
               style={{ color: "var(--text-muted)" }}
               title="Aumentar texto"
             >

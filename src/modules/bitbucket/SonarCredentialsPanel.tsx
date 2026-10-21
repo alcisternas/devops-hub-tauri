@@ -137,7 +137,7 @@ export default function SonarCredentialsPanel({ onEstadoCambia, activo = true }:
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            className="px-3 py-2 rounded-md text-sm outline-none"
+            className="px-3 py-2 rounded-md text-sm outline-hidden"
             style={{
               background: "var(--surface-raised)",
               border: "1px solid var(--border-strong)",

@@ -49,7 +49,7 @@ export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
             value={datos.workspace}
             onChange={(e) => set("workspace", e.target.value.trim())}
             disabled={deshabilitado}
-            className="px-3 py-2 rounded-md text-sm outline-none disabled:opacity-50"
+            className="px-3 py-2 rounded-md text-sm outline-hidden disabled:opacity-50"
             style={{ ...estiloInput, fontFamily: "var(--font-mono)" }}
           />
         </label>
@@ -69,7 +69,7 @@ export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
             onChange={(e) => set("projectKey", e.target.value.toUpperCase().trim())}
             disabled={deshabilitado}
             placeholder="API, CON, VST…"
-            className="px-3 py-2 rounded-md text-sm outline-none disabled:opacity-50"
+            className="px-3 py-2 rounded-md text-sm outline-hidden disabled:opacity-50"
             style={{ ...estiloInput, fontFamily: "var(--font-mono)" }}
           />
         </label>
@@ -89,7 +89,7 @@ export default function RepoForm({ datos, onCambio, deshabilitado }: Props) {
           onChange={(e) => set("reposTexto", e.target.value.toLowerCase())}
           disabled={deshabilitado}
           placeholder={"br-api-sd00295-oi00026\nbr-api-sd00310-oi00031"}
-          className="px-3 py-2 rounded-md text-sm outline-none resize-y disabled:opacity-50"
+          className="px-3 py-2 rounded-md text-sm outline-hidden resize-y disabled:opacity-50"
           style={{ ...estiloInput, fontFamily: "var(--font-mono)", lineHeight: 1.7 }}
         />
 

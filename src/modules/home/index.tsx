@@ -85,7 +85,7 @@ export default function Home() {
             <Link
               key={tool.to}
               to={tool.to}
-              className="block p-6 rounded-lg border transition-all hover:-translate-y-0.5 hover:border-[var(--accent)]"
+              className="block p-6 rounded-lg border transition-all hover:-translate-y-0.5 hover:border-(--accent)"
               style={{ borderColor: "var(--border)", background: "var(--surface)" }}
             >
               {content}

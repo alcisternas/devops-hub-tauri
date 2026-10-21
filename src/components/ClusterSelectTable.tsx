@@ -237,7 +237,7 @@ export default function ClusterSelectTable({
                     focusRow(i);
                     toggle(r.key);
                   }}
-                  className="cursor-pointer outline-none select-none"
+                  className="cursor-pointer outline-hidden select-none"
                   style={{
                     borderTop: "1px solid var(--border)",
                     background: isSelected ? "var(--accent-dim)" : isFocused ? "var(--surface-raised)" : "transparent",

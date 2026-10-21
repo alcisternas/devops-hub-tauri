@@ -102,7 +102,7 @@ export default function GlobalConsole({ height, collapsed = false, onToggleColla
           <button
             onClick={bump}
             disabled={events.length === 0}
-            className="text-xs px-2 py-0.5 rounded disabled:opacity-30"
+            className="text-xs px-2 py-0.5 rounded-sm disabled:opacity-30"
             style={{ color: "var(--text-muted)", border: "1px solid var(--border-strong)" }}
           >
             Limpiar
@@ -110,7 +110,7 @@ export default function GlobalConsole({ height, collapsed = false, onToggleColla
           {onToggleCollapsed && (
             <button
               onClick={onToggleCollapsed}
-              className="text-xs px-2 py-0.5 rounded"
+              className="text-xs px-2 py-0.5 rounded-sm"
               style={{ color: "var(--text-muted)", border: "1px solid var(--border-strong)" }}
               title={collapsed ? "Mostrar la consola" : "Contraer la consola"}
             >
