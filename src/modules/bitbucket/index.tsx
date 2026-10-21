@@ -36,8 +36,9 @@ function Contenido() {
   const [datos, setDatos] = useState<DatosForm>(DATOS_INICIALES);
   const [credOk, setCredOk] = useState(false);
   const [sonarOk, setSonarOk] = useState(false);
-  // "manual": formulario de siempre. "jira": procesa tickets de altas de repositorios.
-  const [modo, setModo] = useState<"manual" | "jira">("manual");
+  // "jira": procesa tickets de altas de repositorios (modo por defecto).
+  // "manual": el formulario de siempre.
+  const [modo, setModo] = useState<"manual" | "jira">("jira");
   const [jiraOk, setJiraOk] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [ejecutando, setEjecutando] = useState(false);
@@ -118,8 +119,8 @@ function Contenido() {
           <div className="flex items-center gap-2">
             {(
               [
-                ["manual", "Manual"],
                 ["jira", "Desde ticket de Jira"],
+                ["manual", "Manual"],
               ] as const
             ).map(([valor, etiqueta]) => (
               <Button
@@ -139,6 +140,7 @@ function Contenido() {
             <JiraCredentialsPanel onEstadoCambia={setJiraOk} activo={visible && modo === "jira"} />
             <TicketsPanel
               workspace={datos.workspace}
+              activo={visible && modo === "jira"}
               jiraOk={jiraOk}
               bitbucketOk={credOk}
               crearSonar={datos.crearSonar}

@@ -84,8 +84,11 @@ procesar.rs      orquestación de un ticket, etiquetas, cierre y publicación de
 pequeños en `index.tsx` (selector de modo), `shared.ts` (tipos) y
 `ResultsPanel.tsx` (prop opcional `sinSonar`).
 
-Pantalla: selector **Manual / Desde ticket de Jira**. El modo manual queda
-montado y oculto por CSS (nunca se desmonta). El token de Jira solo se consulta
+Pantalla: selector **Desde ticket de Jira / Manual**, con Jira por defecto. Al abrir
+el modo, con las credenciales validadas, se listan solos los tickets asignados.
+Tras gestionar un ticket, una tarjeta lista cada repo con la URL para activar el
+widget de SonarQube (`urlWidgetSonar` en `shared.ts`) y un botón para abrirla. El
+modo manual queda montado y oculto por CSS (nunca se desmonta). El token de Jira solo se consulta
 al abrir el modo Jira.
 
 **La imagen de evidencia se dibuja con canvas en la interfaz**, no en Rust: el

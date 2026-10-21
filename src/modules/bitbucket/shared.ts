@@ -123,6 +123,12 @@ export interface ResultadoTicket {
 
 export const URL_JIRA = "https://bancoripley1.atlassian.net";
 
+// Pantalla de ajustes de SonarQube Cloud dentro del repositorio. El widget lo guarda
+// la propia app de SonarCloud: no tiene API, solo se activa desde esta pantalla.
+export function urlWidgetSonar(workspace: string, repo: string): string {
+  return `https://bitbucket.org/${workspace}/${repo}/admin/addon/admin/sonarcloud/repository-config`;
+}
+
 // Mismo patrón de parseo que usa Clusters, para que un error de Rust se
 // muestre igual en todo el hub.
 export function parseErr(err: unknown): string {

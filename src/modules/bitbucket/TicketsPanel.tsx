@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, ErrorNotice, MetaLine } from "../../components/ui";
@@ -7,6 +7,7 @@ import { dibujarEvidenciaPng } from "./evidencia";
 import {
   URL_JIRA,
   parseErr,
+  urlWidgetSonar,
   type OpcionesProceso,
   type ResultadoTicket,
   type TicketPendiente,
@@ -14,6 +15,8 @@ import {
 
 interface Props {
   workspace: string;
+  // Si el modo está a la vista. Mientras sea false no se consulta nada.
+  activo: boolean;
   jiraOk: boolean;
   bitbucketOk: boolean;
   // La casilla de SonarQube es la misma del modo manual: así el panel del
@@ -69,6 +72,7 @@ function Casilla({
 
 export default function TicketsPanel({
   workspace,
+  activo,
   jiraOk,
   bitbucketOk,
   crearSonar,
@@ -106,6 +110,16 @@ export default function TicketsPanel({
       setBuscando(false);
     }
   }
+
+  // Al abrir el modo, con las credenciales ya validadas, se listan solos los
+  // tickets asignados a la cuenta. Si falla, el error queda a la vista y no
+  // se reintenta en bucle: hay un botón para volver a buscar.
+  useEffect(() => {
+    if (activo && jiraOk && bitbucketOk && tickets === null && !buscando && !errorLista) {
+      buscar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activo, jiraOk, bitbucketOk]);
 
   // Repos de Base de Datos: sin Pipelines ni SonarQube, sin excepción.
   const usaSonar = crearSonar && !!elegido && !elegido.esBd;
@@ -186,12 +200,13 @@ export default function TicketsPanel({
         style={CAJA}
       >
         <div className="text-sm" style={{ color: "var(--text)" }}>
-          Procesa los tickets de alta de repositorios asignados a la cuenta del token: lee el
-          formulario, crea los repositorios y deja el ticket listo.
+          Tickets de alta de repositorios asignados a tu cuenta de Jira. Con un botón se gestiona
+          cada uno: crea los repositorios, activa Pipelines si corresponde, importa en SonarQube,
+          etiqueta y cierra el ticket, y responde al solicitante.
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={buscar} disabled={!listo || buscando || ejecutando}>
-            {buscando ? "Buscando…" : "Buscar tickets pendientes"}
+            {buscando ? "Buscando…" : tickets === null ? "Buscar mis tickets" : "Actualizar lista"}
           </Button>
           {!listo && (
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -260,7 +275,7 @@ export default function TicketsPanel({
                         setErrorProceso("");
                       }}
                     >
-                      Revisar y procesar
+                      Gestionar ticket
                     </Button>
                   </div>
                 </div>
@@ -414,7 +429,61 @@ export default function TicketsPanel({
 
       {resultado && (
         <div className="space-y-3">
-          <ResultsPanel resumen={resultado.resumen} sinSonar={resultado.esBd} />
+          {/* El paso manual de Sonar lo cubre la tarjeta de abajo, con el enlace
+              de cada repositorio. Sin esto el panel repetiría las instrucciones. */}
+          <ResultsPanel resumen={resultado.resumen} sinSonar />
+
+          {!resultado.esBd && resultado.resumen.resultados.some((r) => r.estado === "creado") && (
+            <div className="p-4 rounded-lg border space-y-3" style={CAJA}>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                  Pendiente manual — activar el widget de SonarQube
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  Los proyectos ya están creados y vinculados. En cada repositorio hay que marcar
+                  "Show repository overview widget" y guardar; esa opción no tiene API.
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {resultado.resumen.resultados
+                  .filter((r) => r.estado === "creado")
+                  .map((r) => {
+                    const url = urlWidgetSonar(workspace, r.repo);
+                    return (
+                      <div
+                        key={r.repo}
+                        className="flex items-center gap-3 px-3 py-2 rounded-md"
+                        style={{ background: "var(--surface-raised)" }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm" style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>
+                            {r.repo}
+                          </div>
+                          <div
+                            className="text-xs truncate"
+                            style={{ color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}
+                          >
+                            {url}
+                          </div>
+                          {!r.sonarBindeado && (
+                            <div className="text-xs mt-0.5" style={{ color: "var(--partial)" }}>
+                              Sonar no quedó vinculado: {r.sonarDetalle ?? "revisar el detalle de arriba"}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="accent-outline"
+                          className="text-xs px-2.5 py-1 shrink-0"
+                          onClick={() => openUrl(url)}
+                        >
+                          Abrir
+                        </Button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
 
           <div className="p-4 rounded-lg border space-y-2" style={CAJA}>
             <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>
