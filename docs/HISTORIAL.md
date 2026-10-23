@@ -10,6 +10,36 @@ funcionalidad nueva.
 
 ---
 
+## Sin versión asignada (rama local `feat/hardening-imagenes`)
+
+El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
+
+**Agregado**
+
+- **Módulo "Hardening de imágenes" (fase 1).** Recibe la referencia de una imagen pública, la resuelve por digest en el registro, la escanea con Trivy (Docker no hace falta), muestra los componentes que se pueden conservar o quitar según el tipo de imagen (por defecto conserva npm, que las imágenes de desarrollo necesitan), calcula el impacto y el plan de corrección con cada cambio y genera el Dockerfile endurecido (rootfs limpio, `FROM scratch`, con pruebas funcionales), listo para guardar y construir. **No construye ni reescanea todavía**: la pantalla entrega los comandos para construir, verificar y subir a ECR. Es un port a Rust del motor de Container Hardening Studio, verificado contra la salida de su código Python con un escaneo real (9 configuraciones; Dockerfile y huella idénticos). Detalle, decisiones y límites en `docs/TRASPASO-hardening.md`.
+- **`publicar.sh` para llevar la imagen a ECR.** Junto al Dockerfile se guarda un script que sigue el procedimiento manual del equipo (credenciales del access portal, Docker Scout como filtro de vulnerabilidades críticas y altas, tag con sufijo `-sec`) y agrega pruebas funcionales y la comprobación de que la imagen no exista ya en ECR. Se ejecuta en un equipo con Docker, por ejemplo Cloud Shell de GCP; la cuenta, región, repositorio y tag se editan en la pantalla. No se pudo ejecutar de punta a punta (sin Docker ni AWS aquí).
+- **Archivos compartidos tocados, con cambios mínimos de líneas:** `src-tauri/src/lib.rs` (6 comandos, el `use` y el `.manage` del estado), `src-tauri/src/modules/mod.rs` (`pub mod hardening;`), `src-tauri/Cargo.toml` (`sha2`), `src/App.tsx` (ruta), `src/components/Layout.tsx` (entrada del menú), `src/modules/clusters/GlobalConsole.tsx` (etiqueta `[Hardening]`) y `src/modules/home/index.tsx` (tarjeta).
+
+---
+
+## Sin versión asignada (rama local `feat/flujo-tickets-jira`)
+
+El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
+
+**Agregado**
+
+- **Modo "Desde ticket de Jira" en Bitbucket Repo Creator.** Lee los tickets de altas de repositorios asignados a la cuenta del token (estado Asignado o Trabajo en curso), valida el formulario ABM, crea los repositorios con el motor existente (`bitbucket_crear_repos`) y deja el ticket listo: etiquetas, cierre y respuesta al solicitante con las URLs y una imagen de repositorios y ramas. El modo manual queda intacto. Detalle, reglas y verificación en `docs/TRASPASO-jira.md`.
+- **El modo Jira es el modo por defecto** de la pantalla y lista solo los tickets asignados a la cuenta al abrirlo (con las credenciales ya validadas). Cada ticket tiene un botón "Gestionar ticket". Tras gestionarlo, una tarjeta muestra por repositorio la URL para activar a mano el widget de SonarQube (esa opción no tiene API), con un botón para abrirla.
+- **Repositorios de Base de Datos** (campo "Lenguaje / Tecnología" = "Base de Datos") se crean sin Pipelines ni proyecto en SonarQube.
+- **Archivos compartidos tocados, con cambios mínimos de líneas:** `src-tauri/src/lib.rs` (6 comandos nuevos y el `use`) y `src-tauri/src/modules/mod.rs` (`pub mod jira;`). En el módulo propio: `bitbucket/index.tsx`, `bitbucket/shared.ts` y `bitbucket/ResultsPanel.tsx` (prop opcional `sinSonar`).
+
+**Seguridad**
+
+- **Dependencias de npm con vulnerabilidades conocidas.** `npm audit` reportaba 11 hallazgos (7 altos y 4 moderados) en `vite`, `source-map-js`, `react-router-dom` 6 y la cadena de `tailwindcss` 3. Paso 1: `npm audit fix` (sin saltos mayores) actualiza `vite` y `source-map-js`; `react-router-dom` pasa de 6.30 a 7.18 (solo se usan `HashRouter`, `useLocation`, `NavLink` y `Link`, cuya API no cambia). Verificado con `tsc`, `vite build` y una comparación de estilos computados de las 4 pantallas (431 elementos) antes y después: 0 diferencias.
+  Paso 2: migración de `tailwindcss` 3.4 a 4.3 con la herramienta oficial `@tailwindcss/upgrade`: `@tailwindcss/postcss` reemplaza a `tailwindcss` y `autoprefixer` en `postcss.config.js`, `@tailwind base/components/utilities` pasa a `@import 'tailwindcss'`, se elimina `tailwind.config.js` (estaba vacío) y se renombran utilidades (`outline-none` a `outline-hidden`, `rounded` a `rounded-sm`, `bg-[var(--x)]` a `bg-(--x)`) en 11 archivos. Dos ajustes en `index.css` para conservar el aspecto: `--font-sans` fijada a la fuente de Tailwind 3 (Tailwind 4.3 cambió la suya) y cursor de mano en los botones (Tailwind 4 usa flecha). Resultado: `npm audit` pasa de 11 hallazgos a 0. Verificado con la misma comparación de estilos computados: ninguna propiedad de estilo cambia salvo dos diferencias de implementación sin efecto visual, el margen de `space-y` (ahora en `margin-bottom` de cada elemento en vez de `margin-top` del siguiente, con las mismas posiciones) y el contorno de los inputs (`outline-style: none` en vez de un contorno transparente). **Pendiente de validar en la app instalada** (Tauri en macOS, Windows y Linux), porque la comparación se hizo en un navegador.
+
+---
+
 ## 0.6.8
 
 **Corregido**

@@ -54,7 +54,7 @@ export function TextField({
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        className="w-full px-3 py-2 rounded-md text-sm outline-none focus:border-[var(--accent)]"
+        className="w-full px-3 py-2 rounded-md text-sm outline-hidden focus:border-(--accent)"
         style={{
           background: "var(--surface-raised)",
           border: "1px solid var(--border-strong)",
@@ -101,7 +101,7 @@ export function TextAreaField({
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        className="w-full px-3 py-2 rounded-md text-sm outline-none focus:border-[var(--accent)]"
+        className="w-full px-3 py-2 rounded-md text-sm outline-hidden focus:border-(--accent)"
         style={{
           background: "var(--surface-raised)",
           border: "1px solid var(--border-strong)",

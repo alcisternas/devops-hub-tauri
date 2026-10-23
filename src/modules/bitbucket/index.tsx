@@ -7,6 +7,8 @@ import GlobalConsole from "../clusters/GlobalConsole";
 import { useConsolePanel } from "../../hooks/useConsolePanel";
 import CredentialsPanel from "./CredentialsPanel";
 import SonarCredentialsPanel from "./SonarCredentialsPanel";
+import JiraCredentialsPanel from "./JiraCredentialsPanel";
+import TicketsPanel from "./TicketsPanel";
 import RepoForm, { type DatosForm } from "./RepoForm";
 import ConfirmPanel from "./ConfirmPanel";
 import ResultsPanel from "./ResultsPanel";
@@ -34,6 +36,10 @@ function Contenido() {
   const [datos, setDatos] = useState<DatosForm>(DATOS_INICIALES);
   const [credOk, setCredOk] = useState(false);
   const [sonarOk, setSonarOk] = useState(false);
+  // "jira": procesa tickets de altas de repositorios (modo por defecto).
+  // "manual": el formulario de siempre.
+  const [modo, setModo] = useState<"manual" | "jira">("jira");
+  const [jiraOk, setJiraOk] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [ejecutando, setEjecutando] = useState(false);
   const [resumen, setResumen] = useState<ResumenRun | null>(null);
@@ -110,52 +116,90 @@ function Contenido() {
             <SonarCredentialsPanel onEstadoCambia={setSonarOk} activo={visible} />
           )}
 
-          {/* Mientras hay resultados, el formulario se oculta para no
-              competir con ellos. No se desmonta: el estado sigue vivo si
-              el usuario vuelve a editar. */}
-          <div style={{ display: resumen ? "none" : "block" }} className="space-y-3">
-            <RepoForm datos={datos} onCambio={setDatos} deshabilitado={confirmando || ejecutando} />
-
-            {!confirmando && (
-              <div className="flex items-center gap-3">
-                <Button onClick={() => setConfirmando(true)} disabled={!puedeCrear}>
-                  Continuar
-                </Button>
-                {!credOk && (
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Primero hay que validar las credenciales.
-                  </span>
-                )}
-                {credOk && !puedeCrear && (
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    {datos.crearSonar && !sonarOk
-                      ? "Falta validar el token de SonarQube."
-                      : "Falta el proyecto o los nombres de repositorio."}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {confirmando && (
-              <ConfirmPanel
-                config={config}
-                ejecutando={ejecutando}
-                onConfirmar={ejecutar}
-                onCancelar={() => setConfirmando(false)}
-              />
-            )}
+          <div className="flex items-center gap-2">
+            {(
+              [
+                ["jira", "Desde ticket de Jira"],
+                ["manual", "Manual"],
+              ] as const
+            ).map(([valor, etiqueta]) => (
+              <Button
+                key={valor}
+                variant={modo === valor ? "accent-outline" : "secondary"}
+                className="text-xs px-3 py-1.5"
+                onClick={() => setModo(valor)}
+              >
+                {etiqueta}
+              </Button>
+            ))}
           </div>
 
-          {error && <ErrorNotice>{error}</ErrorNotice>}
+          {/* El token de Jira solo se consulta cuando se abre este modo: con
+              el modo manual el ítem del llavero no se lee nunca. */}
+          <div style={{ display: modo === "jira" ? "block" : "none" }} className="space-y-3">
+            <JiraCredentialsPanel onEstadoCambia={setJiraOk} activo={visible && modo === "jira"} />
+            <TicketsPanel
+              workspace={datos.workspace}
+              activo={visible && modo === "jira"}
+              jiraOk={jiraOk}
+              bitbucketOk={credOk}
+              crearSonar={datos.crearSonar}
+              onCrearSonar={(v) => setDatos({ ...datos, crearSonar: v })}
+              sonarOk={sonarOk}
+              onInicio={bump}
+            />
+          </div>
 
-          {resumen && (
-            <>
-              <ResultsPanel resumen={resumen} />
-              <Button variant="secondary" onClick={nuevaCorrida}>
-                Crear otros repositorios
-              </Button>
-            </>
-          )}
+          {/* Modo manual: se oculta por CSS, nunca se desmonta, para conservar
+              lo escrito y los resultados al cambiar de modo. */}
+          <div style={{ display: modo === "manual" ? "block" : "none" }} className="space-y-3">
+            {/* Mientras hay resultados, el formulario se oculta para no
+                competir con ellos. No se desmonta: el estado sigue vivo si
+                el usuario vuelve a editar. */}
+            <div style={{ display: resumen ? "none" : "block" }} className="space-y-3">
+              <RepoForm datos={datos} onCambio={setDatos} deshabilitado={confirmando || ejecutando} />
+
+              {!confirmando && (
+                <div className="flex items-center gap-3">
+                  <Button onClick={() => setConfirmando(true)} disabled={!puedeCrear}>
+                    Continuar
+                  </Button>
+                  {!credOk && (
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      Primero hay que validar las credenciales.
+                    </span>
+                  )}
+                  {credOk && !puedeCrear && (
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      {datos.crearSonar && !sonarOk
+                        ? "Falta validar el token de SonarQube."
+                        : "Falta el proyecto o los nombres de repositorio."}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {confirmando && (
+                <ConfirmPanel
+                  config={config}
+                  ejecutando={ejecutando}
+                  onConfirmar={ejecutar}
+                  onCancelar={() => setConfirmando(false)}
+                />
+              )}
+            </div>
+
+            {error && <ErrorNotice>{error}</ErrorNotice>}
+
+            {resumen && (
+              <>
+                <ResultsPanel resumen={resumen} />
+                <Button variant="secondary" onClick={nuevaCorrida}>
+                  Crear otros repositorios
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

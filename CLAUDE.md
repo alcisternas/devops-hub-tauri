@@ -26,8 +26,9 @@ App de escritorio nativa (Tauri 2 + React 18 + TypeScript + Rust) para el equipo
 
 ```
 src/modules/clusters/      ← EKS Chile/Perú + GKE + carga kubeconfig
-src/modules/bitbucket/     ← creación de repos, Pipelines, ramas, SonarQube
+src/modules/bitbucket/     ← creación de repos, Pipelines, ramas, SonarQube; modo "Desde ticket de Jira"
 src/modules/cicd/          ← generadores CI/CD + subida a Bitbucket (Jenkins y Spinnaker pendientes)
+src/modules/hardening/     ← hardening de imágenes: analiza, elige qué conservar, genera el Dockerfile (fase 1)
 src/modules/home/          ← pantalla de inicio
 
 src-tauri/src/modules/eks/
@@ -35,7 +36,9 @@ src-tauri/src/modules/gke/
 src-tauri/src/modules/load/
 src-tauri/src/modules/bitbucket/
 src-tauri/src/modules/sonar/
+src-tauri/src/modules/jira/        ← tickets de altas: lectura, validación, cierre y evidencia (usa el motor de bitbucket/)
 src-tauri/src/modules/cicd/
+src-tauri/src/modules/hardening/   ← port a Rust de Container Hardening Studio; pruebas contra su salida en Python
 src-tauri/src/modules/llavero.rs   ← infraestructura compartida de credenciales
 src-tauri/src/modules/system.rs    ← check_dependencies, propósito general
 ```
@@ -179,6 +182,15 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **Cuenta GCP hardcodeada en `default_gcp_chile()`**: `eks/config.rs` tenía la cuenta del desarrollador en el valor por defecto. Cualquier instalación nueva heredaba esa cuenta al crear `accounts.json` por primera vez. → Dejar `account: ""` en el default; en `setup_gcloud_login`, si la cuenta está vacía, hacer `gcloud auth login` sin `--account` (el usuario elige en el navegador), leer la cuenta activa con `gcloud config get-value account` y guardarla en `accounts.json` para las siguientes sesiones.
 - **`gcloud` en Windows no es ejecutable directamente**: la carpeta `bin` del SDK contiene tres archivos con el mismo nombre base — `gcloud` (script Unix sin extensión), `gcloud.cmd` y `gcloud.ps1`. `CreateProcess` de Windows encuentra el script Unix y no puede ejecutarlo. El wrapper real es `gcloud.cmd`. → Definir `GCLOUD_BIN` en `gke/mod.rs` con `#[cfg]` y usarlo en todos los archivos que invoquen gcloud (`gke/login.rs`, `gke/discovery.rs`, `gke/test_cluster.rs`, `cicd/subnets.rs`). Lo mismo aplica a cualquier herramienta que tenga un wrapper `.cmd` en Windows — no asumir que el nombre sin extensión funciona.
 - **Diálogos duplicados del Keychain**: `App.tsx` monta todos los módulos al iniciar, incluyendo `CredentialsPanel` dos veces (Bitbucket + CI/CD `SubirPanel`). Sin caché, cada instancia leía el Keychain por separado. → `bitbucket/credentials.rs` migrado a `llavero.rs` (caché en memoria); `CredentialsPanel` respeta `activo` y comparte `estadoCompartido` entre instancias. Mismo patrón que `SonarCredentialsPanel`.
+- **Jira no devuelve 401 con un token vencido o revocado**: responde 200 con lista vacía, porque trata la petición como anónima. Validar un token Jira con "la búsqueda funcionó" lo da por bueno y el módulo diría "no hay tickets" para siempre. → `jira/credentials.rs` busca algo que existe seguro (los tickets del proyecto SCDO) y una búsqueda vacía delata el token roto.
+- **Los tokens de Jira con scopes no sirven contra `<sitio>.atlassian.net`**: hay que usar `api.atlassian.com/ex/jira/<cloudId>` con Bearer. El `cloudId` sale de `<sitio>/_edge/tenant_info`, sin autenticación. La API de formularios tiene otra base (`api.atlassian.com/jira/forms/cloud/<cloudId>`).
+- **Los nombres de repositorio del ticket no están en los campos "Repositorio 1-5"** (vienen vacíos): viven en las respuestas del formulario "ABM de Repositorios Bitbucket".
+- **La clave del proyecto de Bitbucket no se pasa a mayúsculas**: existe una real en minúsculas (`peru_control_de_cambios`). El campo `projectKey` del modo manual sí la fuerza a mayúsculas; el modo Jira usa la del ticket tal cual.
+- **Etiquetas de Jira**: cualquier texto distinto crea una etiqueta nueva. Solo se agregan `ACN`, `DEVOPS-CHAPTER` y `CHILE`/`PERU` (sin tilde, aunque el campo País diga "Perú").
+- **Tailwind 4 cambia valores por defecto sin avisar**: la fuente del tema (4.3 usa otra lista que Tailwind 3), el cursor de los botones (flecha en vez de mano) y el color de borde. `index.css` conserva los de Tailwind 3 con las que se diseñó la app.
+- **El módulo Hardening es un port verificado, no una reescritura libre.** `testdata/oro.json` lo genera el Python de Studio; si el motor cambia, se regenera y se revisan las diferencias. `workdir` se valida acá (Studio no lo hace) y la cabecera del Dockerfile lleva la firma del hub (la prueba usa la de Studio para comparar la huella).
+- **Trivy corre con entorno mínimo y sin flags que oculten hallazgos** (`--ignore-unfixed`, `--vex`, `--skip-*`): la política bancaria cuenta también lo que no tiene parche.
+- **Docker Scout no se simula.** Está deshabilitado hasta tener una salida SARIF real para probar su lector.
 
 ---
 

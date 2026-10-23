@@ -5,7 +5,8 @@ Panel de control unificado para el equipo DevOps de Banco Ripley, construido con
 ## Módulos
 
 - **Clusters** — descubrimiento, verificación de permisos y carga a kubeconfig para EKS (Chile, Perú) y GKE (Chile).
-- **Bitbucket Repo Creator** — creación de repositorios con ramas estándar, Pipelines y vinculación a SonarQube Cloud.
+- **Bitbucket Repo Creator** — creación de repositorios con ramas estándar, Pipelines y vinculación a SonarQube Cloud. Modo manual y modo "Desde ticket de Jira", que lee los tickets de altas, crea los repositorios y deja el ticket cerrado y respondido.
+- **Hardening de imágenes** — analiza una imagen pública con Trivy, permite elegir qué conservar según su tipo (npm por defecto en Node) y genera el Dockerfile endurecido. Fase 1: todavía no construye ni reescanea la imagen.
 - **CI/CD Automation** — generación de archivos de configuración CI/CD y subida a Bitbucket. Jenkins y Spinnaker pendientes.
 
 ## Instalación

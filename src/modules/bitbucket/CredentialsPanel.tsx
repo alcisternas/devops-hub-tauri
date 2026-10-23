@@ -168,7 +168,7 @@ export default function CredentialsPanel({ workspace, activo = true, onEstadoCam
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="nombre@bancoripley.com"
-            className="px-3 py-2 rounded-md text-sm outline-none"
+            className="px-3 py-2 rounded-md text-sm outline-hidden"
             style={{
               background: "var(--surface-raised)",
               border: "1px solid var(--border-strong)",
@@ -188,7 +188,7 @@ export default function CredentialsPanel({ workspace, activo = true, onEstadoCam
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="••••••••••••"
-            className="px-3 py-2 rounded-md text-sm outline-none"
+            className="px-3 py-2 rounded-md text-sm outline-hidden"
             style={{
               background: "var(--surface-raised)",
               border: "1px solid var(--border-strong)",
@@ -218,7 +218,7 @@ export default function CredentialsPanel({ workspace, activo = true, onEstadoCam
           {SCOPES.map((s) => (
             <span
               key={s}
-              className="text-xs px-2 py-0.5 rounded"
+              className="text-xs px-2 py-0.5 rounded-sm"
               style={{
                 background: "var(--surface-raised)",
                 color: "var(--text-muted)",

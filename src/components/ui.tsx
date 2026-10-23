@@ -7,20 +7,20 @@ type Variant = "primary" | "secondary" | "danger" | "danger-outline" | "accent-o
 // así que --accent-hover estaba definido en los tokens pero nunca se podía
 // aplicar de verdad con el enfoque anterior.
 const variantClass: Record<Variant, string> = {
-  primary: "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]",
+  primary: "bg-(--accent) text-white hover:bg-(--accent-hover)",
   secondary:
-    "bg-[var(--surface-raised)] text-[var(--text)] border border-[var(--border-strong)] hover:bg-[var(--border-strong)]",
+    "bg-(--surface-raised) text-(--text) border border-(--border-strong) hover:bg-(--border-strong)",
   danger: "bg-[#7f1d1d] text-white hover:bg-[#991b1b]",
   // Mismo peso visual que "secondary" — el color de alerta va en
   // borde/texto, no en un relleno sólido, para que una acción destructiva
   // no domine la pantalla frente a la alternativa más segura ("agregar").
   "danger-outline":
-    "bg-[var(--surface-raised)] text-[var(--fail)] border border-[var(--fail)] hover:bg-[var(--fail-dim)]",
+    "bg-(--surface-raised) text-(--fail) border border-(--fail) hover:bg-(--fail-dim)",
   // El borde de "secondary" (gris apagado) se pierde contra el fondo
   // oscuro y se lee como deshabilitado — este usa el color de acento en
   // vez de gris, para que se note que es una acción real.
   "accent-outline":
-    "bg-[var(--surface-raised)] text-[var(--accent)] border border-[var(--accent)] hover:bg-[var(--accent-dim)]",
+    "bg-(--surface-raised) text-(--accent) border border-(--accent) hover:bg-(--accent-dim)",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -79,7 +79,7 @@ export function Dropdown({ value, onChange, options, className = "" }: DropdownP
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-2 pl-3 pr-2.5 py-2 rounded-md text-sm outline-none cursor-pointer transition-colors"
+        className="w-full flex items-center justify-between gap-2 pl-3 pr-2.5 py-2 rounded-md text-sm outline-hidden cursor-pointer transition-colors"
         style={{
           background: "var(--surface-raised)",
           border: `1px solid ${open ? "var(--accent)" : "var(--border-strong)"}`,

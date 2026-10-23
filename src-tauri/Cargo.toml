@@ -20,6 +20,9 @@ chrono = { version = "0.4", features = ["clock"] }
 tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "time", "sync"] }
 base64 = "0.22"
 
+# Huella del Dockerfile generado por el modulo Hardening.
+sha2 = "0.10"
+
 # Cliente HTTP para hablar con la API de Bitbucket.
 #
 # default-features = false es OBLIGATORIO acá, no un detalle de estilo:
