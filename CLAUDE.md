@@ -87,6 +87,7 @@ Versiones publicadas:
 | 0.6.6 | Fix invocación de gcloud en Windows (usar gcloud.cmd, no gcloud) |
 | 0.6.7 | Fix cuenta GCP hardcodeada en instalaciones nuevas; login libre en primer uso |
 | 0.6.8 | Fix sesión GCP en Windows: eliminar --format value(token) y set_active_account |
+| 0.6.9 | Módulo Hardening de imágenes (fase 1), modo "Desde ticket de Jira" en Bitbucket, migración a Tailwind 4 y dependencias sin vulnerabilidades (`npm audit` en 0) |
 
 Versiones planificadas:
 

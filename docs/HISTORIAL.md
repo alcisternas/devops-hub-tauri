@@ -10,24 +10,13 @@ funcionalidad nueva.
 
 ---
 
-## Sin versión asignada (rama local `feat/hardening-imagenes`)
-
-El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
+## 0.6.9
 
 **Agregado**
 
 - **Módulo "Hardening de imágenes" (fase 1).** Recibe la referencia de una imagen pública, la resuelve por digest en el registro, la escanea con Trivy (Docker no hace falta), muestra los componentes que se pueden conservar o quitar según el tipo de imagen (por defecto conserva npm, que las imágenes de desarrollo necesitan), calcula el impacto y el plan de corrección con cada cambio y genera el Dockerfile endurecido (rootfs limpio, `FROM scratch`, con pruebas funcionales), listo para guardar y construir. **No construye ni reescanea todavía**: la pantalla entrega los comandos para construir, verificar y subir a ECR. Es un port a Rust del motor de Container Hardening Studio, verificado contra la salida de su código Python con un escaneo real (9 configuraciones; Dockerfile y huella idénticos). Detalle, decisiones y límites en `docs/TRASPASO-hardening.md`.
 - **`publicar.sh` para llevar la imagen a ECR.** Junto al Dockerfile se guarda un script que sigue el procedimiento manual del equipo (credenciales del access portal, Docker Scout como filtro de vulnerabilidades críticas y altas, tag con sufijo `-sec`) y agrega pruebas funcionales y la comprobación de que la imagen no exista ya en ECR. Se ejecuta en un equipo con Docker, por ejemplo Cloud Shell de GCP; la cuenta, región, repositorio y tag se editan en la pantalla. No se pudo ejecutar de punta a punta (sin Docker ni AWS aquí).
 - **Archivos compartidos tocados, con cambios mínimos de líneas:** `src-tauri/src/lib.rs` (6 comandos, el `use` y el `.manage` del estado), `src-tauri/src/modules/mod.rs` (`pub mod hardening;`), `src-tauri/Cargo.toml` (`sha2`), `src/App.tsx` (ruta), `src/components/Layout.tsx` (entrada del menú), `src/modules/clusters/GlobalConsole.tsx` (etiqueta `[Hardening]`) y `src/modules/home/index.tsx` (tarjeta).
-
----
-
-## Sin versión asignada (rama local `feat/flujo-tickets-jira`)
-
-El número lo asigna quien entregue primero (ver `CONVENCIONES-HUB.md` §2).
-
-**Agregado**
-
 - **Modo "Desde ticket de Jira" en Bitbucket Repo Creator.** Lee los tickets de altas de repositorios asignados a la cuenta del token (estado Asignado o Trabajo en curso), valida el formulario ABM, crea los repositorios con el motor existente (`bitbucket_crear_repos`) y deja el ticket listo: etiquetas, cierre y respuesta al solicitante con las URLs y una imagen de repositorios y ramas. El modo manual queda intacto. Detalle, reglas y verificación en `docs/TRASPASO-jira.md`.
 - **El modo Jira es el modo por defecto** de la pantalla y lista solo los tickets asignados a la cuenta al abrirlo (con las credenciales ya validadas). Cada ticket tiene un botón "Gestionar ticket". Tras gestionarlo, una tarjeta muestra por repositorio la URL para activar a mano el widget de SonarQube (esa opción no tiene API), con un botón para abrirla.
 - **Repositorios de Base de Datos** (campo "Lenguaje / Tecnología" = "Base de Datos") se crean sin Pipelines ni proyecto en SonarQube.
