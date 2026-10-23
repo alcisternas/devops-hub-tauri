@@ -10,6 +10,16 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.10
+
+**Corregido**
+
+- **Con la sesión de GCP vencida no había forma de renovarla desde la app.** La v0.6.8 convirtió `ensure_gcp_session` en "solo verificar" y dejó el login únicamente en `setup_gcloud_login`, pero ningún archivo del frontend invoca ese comando. Resultado: al vencer la sesión (por ejemplo, tras cambiar la contraseña de la cuenta) "Cargar clusters" y "Descubrir clusters" devolvían `[sesion_gcp_vencida] ... Ve a Clusters → GKE Chile ...`, y ese camino terminaba en el mismo error. Antes de 0.6.8 el login ocurría dentro de `ensure_gcp_session`, por eso en macOS funcionaba sin que se notara. Cambios: (1) `ensure_gcp_session` vuelve a renovar la sesión sola, igual que `ensure_chile_sso` / `ensure_peru_sso` para AWS: reutiliza el token si es válido; si no (token vencido, cuenta vacía o cuenta heredada sin sesión) abre `gcloud auth login` sin `--account`, detecta la cuenta activa, verifica el token y la guarda en `accounts.json`. No fuerza ninguna cuenta ni ejecuta `gcloud config set account` (se mantiene lo corregido en 0.6.7 y 0.6.8). (2) Ahora recibe el `AppHandle`, es bloqueante y devuelve `GcpLoginResult` con la cuenta efectiva; los tres puntos de llamada (`gke/discovery.rs`, `load/loader.rs` y `cicd/subnets.rs`, este con dos llamadas) la invocan con `spawn_blocking` y siguen con la cuenta devuelta. (3) `setup_gcloud_login` pasa a delegar en `ensure_gcp_session`. (4) El mensaje de respaldo ya no remite a una pantalla: indica que no se pudo iniciar sesión y qué hacer. **Pendiente de validar con el binario instalado en macOS y Windows**: el login con navegador no se pudo ejecutar aquí. Si la cuenta activa de gcloud difiere de la guardada, `get_gcp_token()` usa la activa (sin `--account`); queda como hipótesis por confirmar con `gcloud auth list`.
+- **Archivos fuera del módulo tocados:** `load/loader.rs` y `cicd/subnets.rs`, solo en la llamada a `ensure_gcp_session`.
+- **Las marcas de selección se limpiaban solo al actualizar la lista.** En "Cargar clusters", tras una carga los clusters seguían marcados; al filtrar y marcar otros, los anteriores se volvían a cargar. Ahora `loadSelected` lee el `LoadSummary` y, tras la carga (agregando o reemplazando), quita de la selección los clusters con estado `cargado` u `omitido`. Los que dieron `error` siguen marcados para reintentar. Si el comando falla del todo (por ejemplo, login de GCP fallido), la selección se conserva. Solo cambia `clusters/LoadTab.tsx`.
+
+---
+
 ## 0.6.9
 
 **Agregado**

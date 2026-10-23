@@ -447,7 +447,7 @@ pub async fn cicd_subnets_leer(app: AppHandle) -> Result<EstadoSubredes, Refresh
 // ya estaba, un ambiente que falla conserva lo que tenía en caché.
 #[tauri::command]
 pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, RefreshError> {
-    let cuenta = cuenta_configurada(&app).ok_or_else(|| {
+    let mut cuenta = cuenta_configurada(&app).ok_or_else(|| {
         RefreshError::new(
             "cuenta_gcp",
             "No hay una cuenta de GCP configurada en el hub.",
@@ -477,20 +477,26 @@ pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, R
     emit_progress(MODULO, &app, "Verificando sesión de gcloud", &cuenta, 1, total, "running");
     let app_login = app.clone();
     let cuenta_login = cuenta.clone();
-    let sesion = tokio::task::spawn_blocking(move || ensure_gcp_session(&cuenta_login))
-        .await
-        .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
+    let app_sesion = app.clone();
+    let sesion =
+        tokio::task::spawn_blocking(move || ensure_gcp_session(&app_sesion, &cuenta_login))
+            .await
+            .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
 
     match sesion {
-        Ok(reutilizada) => emit_progress(
-            MODULO,
-            &app_login,
-            if reutilizada { "Sesión vigente" } else { "Sesión iniciada" },
-            &cuenta,
-            1,
-            total,
-            "ok",
-        ),
+        Ok(s) => {
+            // La cuenta efectiva puede diferir de la guardada si hubo login.
+            cuenta = s.account;
+            emit_progress(
+                MODULO,
+                &app_login,
+                if s.reused_session { "Sesión vigente" } else { "Sesión iniciada" },
+                &cuenta,
+                1,
+                total,
+                "ok",
+            )
+        }
         Err(e) => {
             emit_progress(MODULO, &app_login, "Sin sesión de gcloud", &cuenta, 1, total, "error");
             return Err(e);
@@ -510,11 +516,14 @@ pub async fn cicd_subnets_actualizar(app: AppHandle) -> Result<EstadoSubredes, R
             if parece_sesion_vencida(e) {
                 emit_progress(MODULO, &app, "Sesión vencida, reintentando", proyecto, n, total, "running");
                 let cuenta_retry = cuenta.clone();
-                let relogin =
-                    tokio::task::spawn_blocking(move || ensure_gcp_session(&cuenta_retry))
-                        .await
-                        .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
-                if relogin.is_ok() {
+                let app_retry = app.clone();
+                let relogin = tokio::task::spawn_blocking(move || {
+                    ensure_gcp_session(&app_retry, &cuenta_retry)
+                })
+                .await
+                .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
+                if let Ok(s) = relogin {
+                    cuenta = s.account;
                     resultado = consultar_proyecto(proyecto, &cuenta).await;
                 }
             }

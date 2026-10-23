@@ -25,6 +25,19 @@ interface CombinedInventoryResult {
   has_gcp: boolean;
   entries: CombinedClusterEntry[];
 }
+interface LoadResultItem {
+  cluster: string;
+  context_alias: string;
+  estado: "cargado" | "omitido" | "error";
+  detalle: string | null;
+}
+interface LoadSummary {
+  cargados: number;
+  omitidos: number;
+  con_errores: number;
+  items: LoadResultItem[];
+  contextos_eliminados: number;
+}
 function parseErr(err: unknown): string {
   const e = err as RefreshError;
   return e && e.etapa && e.mensaje ? `[${e.etapa}] ${e.mensaje}` : String(err);
@@ -122,7 +135,13 @@ export default function LoadTab({ active }: { active: boolean }) {
     setLoading(true);
     setLoadError("");
     try {
-      await invoke("load_selected_clusters", { selections, mode });
+      const resumen = await invoke<LoadSummary>("load_selected_clusters", { selections, mode });
+      // Se limpian las marcas de lo que quedó bien para que la siguiente
+      // carga no lo repita; los que fallaron siguen marcados para reintentar.
+      const resueltos = new Set(
+        resumen.items.filter((i) => i.estado !== "error").map((i) => i.context_alias),
+      );
+      setSelectedKeys((prev) => new Set([...prev].filter((k) => !resueltos.has(k))));
     } catch (err) {
       setLoadError(parseErr(err));
     } finally {

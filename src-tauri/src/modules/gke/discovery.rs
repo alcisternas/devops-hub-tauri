@@ -67,10 +67,22 @@ pub async fn discover_gcp_projects(app: AppHandle) -> Result<GcpDiscoveryResult,
     // no hay garantía de que el error de gcloud coincida con alguno de
     // los patrones de reautenticación que se detectan más abajo (esos
     // cubren token vencido a mitad de operación, no "nunca hizo login").
-    if let Err(e) = super::login::ensure_gcp_session(&account) {
-        emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
-        return Err(e);
-    }
+    // Si la sesión venció, abre el login en el navegador. La cuenta efectiva
+    // puede cambiar (cuenta vacía o heredada), por eso se toma la devuelta.
+    let app_sesion = app.clone();
+    let account_sesion = account.clone();
+    let sesion = tokio::task::spawn_blocking(move || {
+        super::login::ensure_gcp_session(&app_sesion, &account_sesion)
+    })
+    .await
+    .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))?;
+    let account = match sesion {
+        Ok(s) => s.account,
+        Err(e) => {
+            emit_progress("gke-chile", &app, "descubriendo_proyectos", "GCP", 1, 1, "error");
+            return Err(e);
+        }
+    };
 
     let (mut ok, mut stdout, stderr) = run_list_projects(&account);
     let mut reauth_detectado = false;

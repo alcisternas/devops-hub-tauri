@@ -68,7 +68,7 @@ pub async fn load_selected_clusters(
     selections: Vec<CombinedClusterEntry>,
     mode: String,
 ) -> Result<LoadSummary, RefreshError> {
-    let accounts_cfg = load_or_create_accounts(&app)?;
+    let mut accounts_cfg = load_or_create_accounts(&app)?;
 
     // ── Modo reemplazar: limpiar todo antes de cargar ──────────────────────
     let mut contextos_eliminados = 0usize;
@@ -93,7 +93,16 @@ pub async fn load_selected_clusters(
         ensure_peru_sso(&app).await?;
     }
     if needs_gcp {
-        ensure_gcp_session(&accounts_cfg.gcp.chile.account)?;
+        // Abre el login en el navegador si la sesión venció; la cuenta
+        // efectiva puede cambiar, así que se actualiza la copia en memoria.
+        let app_sesion = app.clone();
+        let account_sesion = accounts_cfg.gcp.chile.account.clone();
+        let sesion = tokio::task::spawn_blocking(move || {
+            ensure_gcp_session(&app_sesion, &account_sesion)
+        })
+        .await
+        .map_err(|e| RefreshError::new("sesion_gcp", e.to_string()))??;
+        accounts_cfg.gcp.chile.account = sesion.account;
     }
 
     // ── Cargar cada selección ───────────────────────────────────────────────
