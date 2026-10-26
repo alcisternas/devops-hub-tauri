@@ -10,6 +10,15 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.12
+
+**Mejorado**
+
+- **EKS Perú: la fase A del recorrido (sts, listado y describe por cuenta y rol) ahora corre en paralelo.** Al pasar Perú a roles SSO reales, la fase A pasó de unas 27 pasadas por cuenta a unas 87 por cuenta y rol, todas en serie. Se divide en dos: **A0** escribe todos los perfiles en `~/.aws/config` de a uno (siguen serializados porque comparten archivo; es solo escritura local) y **A1** ejecuta `sts`, `list-clusters` y `describe-cluster` de cada intento en paralelo, acotado por un semáforo (`MAX_CONCURRENT_ACCOUNTS = 6`) y con `spawn_blocking`, porque las llamadas usan `std::process`. Cada tarea escribe solo en su ranura, así que el inventario y la lista de omitidos conservan el orden de siempre, sin depender de quién termine primero. El progreso usa un contador atómico propio, con un solo evento por intento al terminar. La fase B, el formato del inventario, los CSV y la interfaz no cambian. Solo toca `eks/peru.rs`; Chile queda igual.
+- **Medición que respalda el valor 6** (2026-10-26, simulación con la CLI sobre 87 combinaciones cuenta+rol, credenciales en caché, una corrida de cada tipo): secuencial 324 s, 3 a la vez 103 s, 6 a la vez 60 s. Es una simulación, no la app: no incluye la escritura de perfiles ni el descubrimiento (que sigue secuencial, con una llamada a `list-account-roles` por cuenta), y el script descartaba los errores, así que no se comprobó entonces que el resultado fuera idéntico ni la ausencia de throttling de AWS. **Pendiente de validar con el binario instalado:** repetir el recorrido de Perú, comparar el inventario con una copia del anterior (mismas entradas de cluster, rol y permisos; el orden no importa), revisar que la consola no muestre errores nuevos de throttling y comparar el tiempo.
+
+---
+
 ## 0.6.11
 
 **Corregido**

@@ -22,6 +22,10 @@ use super::sso::{aws_config_path, aws_sso_cache_dir, find_cached_token};
 
 const MAX_CONCURRENT_CLUSTERS: usize = 3;
 
+// Intentos cuenta+rol de la fase A que corren a la vez. Medido con la CLI sobre 87
+// combinaciones: secuencial 324 s, 3 a la vez 103 s, 6 a la vez 60 s.
+const MAX_CONCURRENT_ACCOUNTS: usize = 6;
+
 // ─────────────────────────────────────────────────────────────────────────
 // Perfiles — desde que se retiró titan-pipeline, Perú entra igual que
 // Chile: un perfil SSO por cuenta+rol (sso_role_name real), sin AssumeRole
@@ -222,6 +226,75 @@ fn csv_row(fields: &[String]) -> String {
     fields.iter().map(|f| csv_quote(f)).collect::<Vec<_>>().join(",")
 }
 
+// Un intento (cuenta+rol) de la fase A, con todo lo que necesita la tarea.
+struct ScanAttempt {
+    account_id: String,
+    account_name: String,
+    role: String,
+    role_profile: String,
+    item_label: String,
+}
+
+// Fase A1 de UN intento: sts, listar clusters y describir cada uno. Devuelve
+// el motivo de omisión (si lo hubo) y los clusters ACTIVE encontrados. Emite
+// un solo evento de progreso, al terminar, con un número único del contador.
+fn scan_account_role(
+    app: &AppHandle,
+    att: &ScanAttempt,
+    eks_region: &str,
+    done: &AtomicU32,
+    total: u32,
+) -> (Option<String>, Vec<ClusterJob>) {
+    let finish = |etapa: &str, item: &str, estado: &str| {
+        let n = done.fetch_add(1, Ordering::SeqCst) + 1;
+        emit_progress("eks-peru", app, etapa, item, n, total, estado);
+    };
+
+    if !check_sts_identity(&att.role_profile) {
+        let msg = format!("{} — sin acceso con el profile", att.item_label);
+        finish("verificando_acceso_sts", &msg, "error");
+        return (Some(msg), Vec::new());
+    }
+
+    let clusters = match list_eks_clusters(&att.role_profile, eks_region) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = format!("{} — error listando clusters: {}", att.item_label, e.mensaje);
+            finish("listando_clusters", &msg, "error");
+            return (Some(msg), Vec::new());
+        }
+    };
+
+    if clusters.is_empty() {
+        let msg = format!("{} — sin clusters EKS en la región {}", att.item_label, eks_region);
+        finish("listando_clusters", &msg, "error");
+        return (Some(msg), Vec::new());
+    }
+
+    let mut jobs = Vec::new();
+    for cluster_name in &clusters {
+        match describe_cluster_status(cluster_name, eks_region, &att.role_profile) {
+            Ok(status) if status == "ACTIVE" => {
+                // pais_cap "Peru" — el mismo formato [País] [AWS] / ... que Chile
+                let context_alias = build_context_alias("Peru", &att.account_name, &att.role, cluster_name);
+                jobs.push(ClusterJob {
+                    account_id: att.account_id.clone(),
+                    account_name: att.account_name.clone(),
+                    profile: att.role_profile.clone(),
+                    role: att.role.clone(),
+                    cluster_name: cluster_name.clone(),
+                    context_alias,
+                });
+            }
+            // No ACTIVE (o error al describir) — se omite en silencio.
+            _ => continue,
+        }
+    }
+
+    finish("listando_clusters", &att.item_label, "ok");
+    (None, jobs)
+}
+
 #[tauri::command]
 pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) -> Result<FullRunResult, RefreshError> {
     let started_at = std::time::Instant::now();
@@ -234,15 +307,21 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
     let eks_region = accounts_cfg.eks_region.clone();
     let sso_session = accounts_cfg.peru.sso_session.clone();
 
-    // ── FASE A (secuencial) — una por cuenta y rol ────────────────────────
+    // ── FASE A0 (secuencial) — escribir los perfiles ──────────────────────
+    // Todos los perfiles van al mismo ~/.aws/config, así que se escriben de
+    // a uno. Es rápido (solo archivo local); lo lento viene después.
     let total_intentos: u32 = accounts.iter().map(|a| a.roles.len() as u32).sum();
     let mut intento_idx: u32 = 0;
-    let mut omitidos: Vec<String> = Vec::new();
-    let mut jobs: Vec<ClusterJob> = Vec::new();
+    // Una ranura por intento (cuenta+rol), en el orden original: así el
+    // inventario y la lista de omitidos no dependen de quién termina primero.
+    let mut slots: Vec<(Option<String>, Vec<ClusterJob>)> = Vec::with_capacity(total_intentos as usize);
+    let mut pendientes: Vec<(usize, ScanAttempt)> = Vec::new();
 
     for account in &accounts {
         for role in &account.roles {
             intento_idx += 1;
+            let slot_idx = slots.len();
+            slots.push((None, Vec::new()));
             let role_profile = role_profile_name(&account.profile, role);
             let item_label = format!("{} / {}", account.profile, role);
 
@@ -256,55 +335,67 @@ pub async fn run_full_peru_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>) 
                 &eks_region,
             ) {
                 let msg = format!("{} — error escribiendo perfil: {}", item_label, e.mensaje);
-                omitidos.push(msg.clone());
+                slots[slot_idx].0 = Some(msg.clone());
                 emit_progress("eks-peru", &app, "escribiendo_perfil", &msg, intento_idx, total_intentos, "error");
                 continue;
             }
 
-            if !check_sts_identity(&role_profile) {
-                let msg = format!("{} — sin acceso con el profile", item_label);
-                omitidos.push(msg.clone());
-                emit_progress("eks-peru", &app, "verificando_acceso_sts", &msg, intento_idx, total_intentos, "error");
-                continue;
-            }
+            pendientes.push((
+                slot_idx,
+                ScanAttempt {
+                    account_id: account.account_id.clone(),
+                    account_name: account.account_name.clone(),
+                    role: role.clone(),
+                    role_profile,
+                    item_label,
+                },
+            ));
+        }
+    }
 
-            let clusters = match list_eks_clusters(&role_profile, &eks_region) {
-                Ok(c) => c,
-                Err(e) => {
-                    let msg = format!("{} — error listando clusters: {}", item_label, e.mensaje);
-                    omitidos.push(msg.clone());
-                    emit_progress("eks-peru", &app, "listando_clusters", &msg, intento_idx, total_intentos, "error");
-                    continue;
-                }
-            };
+    // ── FASE A1 (paralelo acotado) — sts + listar + describir ─────────────
+    // Cada intento ejecuta un solo proceso aws a la vez, así que la carga es
+    // baja; las llamadas son bloqueantes (std::process), por eso van en
+    // spawn_blocking. Cada tarea escribe solo en su ranura.
+    let total_a1 = pendientes.len() as u32;
+    let sem_a = Arc::new(Semaphore::new(MAX_CONCURRENT_ACCOUNTS));
+    let done_a = Arc::new(AtomicU32::new(0));
+    let mut handles_a = Vec::new();
 
-            if clusters.is_empty() {
-                let msg = format!("{} — sin clusters EKS en la región {}", item_label, eks_region);
-                omitidos.push(msg.clone());
-                emit_progress("eks-peru", &app, "listando_clusters", &msg, intento_idx, total_intentos, "error");
-                continue;
-            }
+    for (slot_idx, att) in pendientes {
+        let sem_a = sem_a.clone();
+        let done_a = done_a.clone();
+        let app_h = app.clone();
+        let region = eks_region.clone();
 
-            emit_progress("eks-peru", &app, "listando_clusters", &item_label, intento_idx, total_intentos, "ok");
+        handles_a.push((
+            slot_idx,
+            tokio::spawn(async move {
+                let _permit = sem_a
+                    .acquire_owned()
+                    .await
+                    .expect("el semáforo de concurrencia no debería cerrarse nunca en este flujo");
+                tokio::task::spawn_blocking(move || scan_account_role(&app_h, &att, &region, &done_a, total_a1)).await
+            }),
+        ));
+    }
 
-            for cluster_name in &clusters {
-                match describe_cluster_status(cluster_name, &eks_region, &role_profile) {
-                    Ok(status) if status == "ACTIVE" => {
-                        // pais_cap "Peru" — el mismo formato [País] [AWS] / ... que Chile
-                        let context_alias = build_context_alias("Peru", &account.account_name, role, cluster_name);
-                        jobs.push(ClusterJob {
-                            account_id: account.account_id.clone(),
-                            account_name: account.account_name.clone(),
-                            profile: role_profile.clone(),
-                            role: role.clone(),
-                            cluster_name: cluster_name.clone(),
-                            context_alias,
-                        });
-                    }
-                    _ => continue,
-                }
+    for (slot_idx, h) in handles_a {
+        match h.await {
+            Ok(Ok(result)) => slots[slot_idx] = result,
+            Ok(Err(e)) | Err(e) => {
+                slots[slot_idx].0 = Some(format!("tarea interna falló (join error): {}", e));
             }
         }
+    }
+
+    let mut omitidos: Vec<String> = Vec::new();
+    let mut jobs: Vec<ClusterJob> = Vec::new();
+    for (omitido, mut job_list) in slots {
+        if let Some(msg) = omitido {
+            omitidos.push(msg);
+        }
+        jobs.append(&mut job_list);
     }
 
     // ── FASE B (paralelo acotado, jobs=3) — idéntica a la de Chile ────────

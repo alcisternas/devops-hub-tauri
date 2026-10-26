@@ -90,6 +90,7 @@ Versiones publicadas:
 | 0.6.9 | Módulo Hardening de imágenes (fase 1), modo "Desde ticket de Jira" en Bitbucket, migración a Tailwind 4 y dependencias sin vulnerabilidades (`npm audit` en 0) |
 | 0.6.10 | Fix: `ensure_gcp_session` vuelve a renovar la sesión GCP sola (login en el navegador) en vez de devolver un error sin salida; "Cargar clusters" limpia las marcas de lo cargado |
 | 0.6.11 | Fix: GKE carga con `--dns-endpoint` (sin él Lens daba timeout contra la IP privada); EKS Perú pasa de `titan-pipeline` a roles SSO reales por cuenta, como Chile |
+| 0.6.12 | Mejora: la fase A del recorrido de EKS Perú (sts, listado y describe por cuenta y rol) corre en paralelo (6 a la vez); la escritura de perfiles sigue en serie |
 
 Versiones planificadas:
 
