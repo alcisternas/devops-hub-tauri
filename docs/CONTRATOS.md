@@ -67,6 +67,8 @@ Mismo criterio que `lib.rs`: solo entregar las líneas a agregar.
 
 `hardening` es independiente: no usa código de otros módulos de backend, solo `eks::config::RefreshError` y `eks::permissions::emit_progress`, como el resto. Tampoco los usa nadie más.
 
+`load` lee los inventarios que escribe `eks` (`~/.aws/eks-inventory-chile.json` y `eks-inventory-peru.json`) y el de `gke`, y usa el `profile` y el `role` de cada entrada para `aws eks update-kubeconfig`. Desde la v0.6.11 el inventario de Perú tiene **una entrada por cluster y rol SSO real** (`aws-view`, `aws-edit`, `aws-admin-e`), con `profile` = `<prefijo>--<rol>`; el valor `titan-pipeline` ya no existe. Quien lea esos archivos no debe suponer un rol fijo para Perú. Dentro de `eks`, `peru.rs` reutiliza `permissions::{role_profile_name, write_chile_profile_block}` y `discovery::list_account_roles` (ahora `pub(crate)`): si cambia su firma o el formato del bloque de perfil, Chile y Perú se ven afectados a la vez. `gke::test_cluster::gke_get_credentials` es compartida por `load`, el recorrido de GKE y la prueba de un cluster.
+
 ---
 
 ## Archivos de UI compartidos

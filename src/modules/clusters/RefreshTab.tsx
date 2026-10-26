@@ -10,7 +10,7 @@ export default function RefreshTab() {
         <ChileSection />
       </CollapsibleSection>
 
-      <CollapsibleSection title="EKS — Perú" subtitle="Acceso vía titan-pipeline, una verificación por cuenta">
+      <CollapsibleSection title="EKS — Perú" subtitle="SSO multi-cuenta, rol real por cluster">
         <PeruSection />
       </CollapsibleSection>
 

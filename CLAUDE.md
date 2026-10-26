@@ -89,6 +89,7 @@ Versiones publicadas:
 | 0.6.8 | Fix sesión GCP en Windows: eliminar --format value(token) y set_active_account |
 | 0.6.9 | Módulo Hardening de imágenes (fase 1), modo "Desde ticket de Jira" en Bitbucket, migración a Tailwind 4 y dependencias sin vulnerabilidades (`npm audit` en 0) |
 | 0.6.10 | Fix: `ensure_gcp_session` vuelve a renovar la sesión GCP sola (login en el navegador) en vez de devolver un error sin salida; "Cargar clusters" limpia las marcas de lo cargado |
+| 0.6.11 | Fix: GKE carga con `--dns-endpoint` (sin él Lens daba timeout contra la IP privada); EKS Perú pasa de `titan-pipeline` a roles SSO reales por cuenta, como Chile |
 
 Versiones planificadas:
 
@@ -194,6 +195,8 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **El módulo Hardening es un port verificado, no una reescritura libre.** `testdata/oro.json` lo genera el Python de Studio; si el motor cambia, se regenera y se revisan las diferencias. `workdir` se valida acá (Studio no lo hace) y la cabecera del Dockerfile lleva la firma del hub (la prueba usa la de Studio para comparar la huella).
 - **Trivy corre con entorno mínimo y sin flags que oculten hallazgos** (`--ignore-unfixed`, `--vex`, `--skip-*`): la política bancaria cuenta también lo que no tiene parche.
 - **Docker Scout no se simula.** Está deshabilitado hasta tener una salida SARIF real para probar su lector.
+- **`get-credentials` de GKE sin `--dns-endpoint` deja la IP privada en el kubeconfig**: la carga termina "bien" pero Lens da timeout (`dial tcp 10.x.x.x:443: i/o timeout`) porque la IP no es alcanzable desde la red del usuario. → `gke_get_credentials` prueba primero con `--dns-endpoint` y reintenta sin él si gcloud falla. Con DNS endpoint el kubeconfig no trae CA embebido: `read_server_and_ca` devuelve `None` y las verificaciones corren con `--context`. Probar con un cluster de IP privada y abrirlo en Lens, no solo mirar el mensaje de la app.
+- **Perú ya no usa `titan-pipeline` ni `devops-base`**: el rol se retiró (daba `AccessDenied` hasta en `eks:ListClusters`) y los permisos pasaron a los roles SSO (`aws-view`, `aws-edit`, `aws-admin-e`). Perú se descubre y recorre como Chile: un perfil `<prefijo>--<rol>` por cuenta y rol, y una entrada del inventario por cluster y rol. No reintroducir AssumeRole en cadena. Un permiso denegado por una SCP (`explicit deny in a service control policy`) no es un bug de la app: en la consola de AWS verificar la región (el error visto era de us-east-2 y la app usa us-east-1).
 
 ---
 

@@ -76,20 +76,44 @@ pub(crate) fn list_clusters_for_project(project_id: &str, account: &str) -> Resu
 // EKS (aws eks update-kubeconfig sí soporta --alias directo; gcloud no).
 // ─────────────────────────────────────────────────────────────────────────
 
+// Primero con --dns-endpoint: sin él gcloud deja en el kubeconfig la IP
+// privada del control plane (ej. https://10.73.0.2), inalcanzable desde la
+// red del usuario — Lens da timeout aunque get-credentials "termine bien".
+// Si gcloud falla con el flag (cluster sin DNS endpoint habilitado, o un
+// gcloud viejo que no lo conoce), se reintenta sin él para no perder el
+// cluster; en ese caso queda la IP privada, como antes.
 pub(crate) fn gke_get_credentials(cluster_name: &str, location: &str, project_id: &str, account: &str) -> Result<(), RefreshError> {
+    match run_get_credentials(cluster_name, location, project_id, account, true) {
+        Ok(()) => Ok(()),
+        Err(_) => run_get_credentials(cluster_name, location, project_id, account, false),
+    }
+}
+
+fn run_get_credentials(
+    cluster_name: &str,
+    location: &str,
+    project_id: &str,
+    account: &str,
+    dns_endpoint: bool,
+) -> Result<(), RefreshError> {
+    let mut args = vec![
+        "container",
+        "clusters",
+        "get-credentials",
+        cluster_name,
+        "--region",
+        location,
+        "--project",
+        project_id,
+        "--account",
+        account,
+    ];
+    if dns_endpoint {
+        args.push("--dns-endpoint");
+    }
+
     let output = StdCommand::new(super::GCLOUD_BIN)
-        .args([
-            "container",
-            "clusters",
-            "get-credentials",
-            cluster_name,
-            "--region",
-            location,
-            "--project",
-            project_id,
-            "--account",
-            account,
-        ])
+        .args(&args)
         .output()
         .map_err(|e| RefreshError::new("gke_get_credentials", e.to_string()))?;
 

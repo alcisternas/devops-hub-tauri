@@ -79,7 +79,7 @@ fn list_accounts(token: &str, region: &str) -> Result<Vec<(String, String)>, Ref
     Ok(result)
 }
 
-fn list_account_roles(token: &str, region: &str, account_id: &str) -> Result<Vec<String>, RefreshError> {
+pub(crate) fn list_account_roles(token: &str, region: &str, account_id: &str) -> Result<Vec<String>, RefreshError> {
     let output = Command::new("aws")
         .args([
             "sso",

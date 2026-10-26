@@ -315,8 +315,8 @@ pub(crate) async fn ensure_chile_sso(app: &AppHandle) -> Result<SsoLoginResult, 
     .await
 }
 
-// Mismo concepto para Perú, incluyendo el profile base (devops-base) que
-// Chile no necesita.
+// Mismo concepto para Perú. Ya no escribe el profile base (devops-base):
+// con el retiro de titan-pipeline, Perú entra por la SSO igual que Chile.
 pub(crate) async fn ensure_peru_sso(app: &AppHandle) -> Result<SsoLoginResult, RefreshError> {
     let accounts = load_or_create_accounts(app)?;
     let config_path = aws_config_path(app)?;
@@ -327,15 +327,6 @@ pub(crate) async fn ensure_peru_sso(app: &AppHandle) -> Result<SsoLoginResult, R
         &accounts.peru.sso_session,
         &accounts.peru.portal_url,
         &accounts.sso_region,
-    )?;
-
-    super::peru::write_peru_base_profile(
-        &config_path,
-        &accounts.peru.base_profile,
-        &accounts.peru.sso_session,
-        &accounts.peru.base_account_id,
-        &accounts.peru.base_role,
-        &accounts.eks_region,
     )?;
 
     login_sso_session(

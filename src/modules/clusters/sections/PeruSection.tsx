@@ -16,7 +16,7 @@ interface PeruDiscoveryResult {
   duracion_segundos: number;
 }
 interface PeruFullRunResult {
-  total_cuentas_intentadas: number;
+  total_intentos_rol: number;
   total_clusters_probados: number;
   ok: number;
   insuficientes: number;
@@ -74,9 +74,9 @@ export default function PeruSection() {
     <div className="space-y-5">
       <div>
         <FieldLabel>
-          Perú entra siempre vía titan-pipeline (AssumeRole desde devops-base) — el rol de la SSO no
-          determina el acceso real, así que se verifica una vez por cuenta, no por rol. Un solo botón
-          descubre y recorre en un solo paso.
+          Descubre las cuentas y los roles que la SSO de Perú asigna y recorre los clusters de cada
+          cuenta con cada rol, en un solo paso. Asegura la sesión SSO sola (abre el browser solo si de
+          verdad hace falta).
         </FieldLabel>
         <Button onClick={discoverAndScan} disabled={phase !== "idle"}>
           {buttonLabel}
@@ -90,7 +90,7 @@ export default function PeruSection() {
           <div className="space-y-0.5">
             {discovery && (
               <SuccessNotice>
-                ✓ {discovery.total_cuentas_portal} cuentas en el portal — {discovery.cuentas.length} mapeadas,{" "}
+                ✓ {discovery.total_cuentas_portal} cuentas en el portal — {discovery.cuentas.length} con roles,{" "}
                 {discovery.omitidas.length} omitidas — detalle en la consola
               </SuccessNotice>
             )}
@@ -118,7 +118,7 @@ export default function PeruSection() {
           {fullRunResult && (
             <div className="space-y-1 pt-2 mt-2 border-t" style={{ borderColor: "var(--border)" }}>
               <MetaLine>
-                {fullRunResult.total_cuentas_intentadas} cuentas intentadas · duración total:{" "}
+                {fullRunResult.total_intentos_rol} combinaciones cuenta+rol · duración total:{" "}
                 {formatDuration((discovery?.duracion_segundos ?? 0) + fullRunResult.duracion_segundos)}
               </MetaLine>
               {fullRunResult.shrink_warning && <WarningNotice>⚠ {fullRunResult.shrink_warning}</WarningNotice>}

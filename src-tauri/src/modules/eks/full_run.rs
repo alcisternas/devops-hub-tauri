@@ -382,9 +382,10 @@ pub async fn run_full_chile_scan(app: AppHandle, accounts: Vec<AccountRoleInfo>)
 //
 // Clave de comparación: cuenta + cluster + rol (completa, sin ignorar
 // nada) — así detecta revocaciones específicas de un rol aunque otro rol
-// en el mismo cluster siga funcionando (importante para Chile). Para
-// Perú, donde el rol siempre es "titan-pipeline", esto se comporta igual
-// que comparar solo cuenta+cluster porque ahí nunca hay otro rol.
+// en el mismo cluster siga funcionando. Aplica igual a Chile y a Perú
+// (que desde que se retiró titan-pipeline también prueba cada rol real).
+// Las entradas viejas de Perú con rol "titan-pipeline" no coinciden con
+// ninguna clave nueva, así que no generan falsos "accesos revocados".
 // ─────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Default)]

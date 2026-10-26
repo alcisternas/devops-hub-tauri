@@ -64,8 +64,8 @@ const PERMISSION_CHECKS: [(&str, &str, &str); 14] = [
 
 // ─────────────────────────────────────────────────────────────────────────
 // Escritura del perfil de cuenta — equivalente a add_profile_chile() del
-// bash. Distinto de Perú (que siempre fuerza titan-pipeline vía
-// devops-base, sin usar el rol real) — esto es SOLO para Chile.
+// bash. Desde que se retiró titan-pipeline, Perú reutiliza este mismo
+// bloque (peru.rs) con su propia sso-session.
 // ─────────────────────────────────────────────────────────────────────────
 // Un profile por cuenta+rol, no uno compartido por cuenta — si dos roles
 // de la misma cuenta comparten profile, el segundo que se escribe pisa
