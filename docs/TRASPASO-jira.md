@@ -28,6 +28,11 @@ hacía mejor la creación de Sonar (proyecto con la key correcta y vinculado).
 
 Cada paso posterior a la creación es una casilla en el panel de confirmación.
 
+**Ticket con datos erróneos (v0.6.13).** Si `validar` rechaza el ticket, la tarjeta
+muestra "Corregir y gestionar" y abre un formulario con los datos tal como vienen
+(proyecto, país, tipo de repositorio, repos). Al terminar de corregir sigue el mismo
+recorrido de arriba, con los datos corregidos. Ver la sección 4 para las decisiones.
+
 ---
 
 ## 2. Reglas de negocio (probadas contra tickets reales)
@@ -61,7 +66,7 @@ procesar.rs      orquestación de un ticket, etiquetas, cierre y publicación de
 ```
 
 **Comandos:** `jira_cred_status/save/delete`, `jira_tickets_pendientes`,
-`jira_procesar_ticket`, `jira_publicar_evidencia`.
+`jira_validar_correccion`, `jira_procesar_ticket`, `jira_publicar_evidencia`.
 
 **Las trampas de la API de Jira**
 
@@ -109,6 +114,21 @@ Es una tarjeta por repo con sus ramas, y nada más. Rust recibe el PNG en base64
   imagen que no existe.
 - **Las transiciones se buscan por nombre**, no por id: el id es interno del flujo
   de trabajo y el nombre es lo que ve el equipo.
+- **Las correcciones a mano no se escriben en Jira.** Valen para esa corrida y se
+  listan en el comentario al solicitante ("Correcciones a la solicitud"). Escribir en
+  el formulario del ticket sería una API de escritura que no se ha probado.
+- **Las correcciones pasan por las mismas reglas.** `aplicar_correcciones` modifica el
+  ticket releído y vuelve a llamar a `validar`; la interfaz valida con
+  `jira_validar_correccion`, que usa esa misma función. No hay reglas copiadas en
+  TypeScript. `procesar` aplica las correcciones otra vez al releer el ticket, así que
+  el servidor no confía en lo que validó la interfaz.
+- **El tipo de solicitud no se corrige** (`corregible = false` si no es Alta): una Baja o
+  una Modificación es otro proceso, no un dato mal escrito.
+- **La clave del proyecto se respeta tal cual** al corregir (mayúsculas y minúsculas).
+  El modo Manual la fuerza a mayúsculas, por eso no sirve para claves como
+  `peru_control_de_cambios`.
+- **Un ticket que no se puede leer no cancela la lista**: aparece con `ilegible = true`
+  y el motivo. Si falla la búsqueda de claves, sí es un error total.
 - **El token de Jira no necesita correo** (Bearer), igual que el de SonarQube.
 
 ---
@@ -127,6 +147,12 @@ Es una tarjeta por repo con sus ramas, y nada más. Rust recibe el PNG en base64
   publicación de la evidencia y el camino de Base de Datos.
 
 ## 6. Lo que NO se ha probado
+
+- **El formulario de corrección** (v0.6.13): `cargo check`, 28 pruebas de Rust y
+  `tsc --noEmit` pasan, pero no se recorrió en la app ni en el navegador, y no hubo
+  ninguna corrida real con datos corregidos. Falta probar con un ticket real que traiga
+  un nombre de repo con espacio, y revisar cómo queda el bloque "Correcciones a la
+  solicitud" en el comentario de Jira.
 
 - **Ninguna escritura real desde este código en Rust**: crear repos, etiquetar,
   cerrar y publicar el comentario. La misma lógica corrió en producción en la

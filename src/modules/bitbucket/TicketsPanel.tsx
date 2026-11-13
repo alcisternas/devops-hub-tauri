@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, ErrorNotice, MetaLine } from "../../components/ui";
+import { Button, Dropdown, ErrorNotice, MetaLine } from "../../components/ui";
 import ResultsPanel from "./ResultsPanel";
 import { dibujarEvidenciaPng } from "./evidencia";
 import {
   URL_JIRA,
   parseErr,
+  parsearRepos,
   urlWidgetSonar,
+  type CorreccionesTicket,
   type OpcionesProceso,
   type ResultadoTicket,
   type TicketPendiente,
+  type ValidacionCorreccion,
 } from "./shared";
 
 interface Props {
@@ -34,6 +37,45 @@ interface EstadoEvidencia {
 }
 
 const CAJA = { borderColor: "var(--border)", background: "var(--surface)" };
+
+const ESTILO_INPUT = {
+  background: "var(--surface-raised)",
+  border: "1px solid var(--border-strong)",
+  color: "var(--text)",
+};
+
+// Datos del formulario de corrección, tal como los escribe el usuario.
+interface FormCorreccion {
+  projectKey: string;
+  paisCodigo: string;
+  // "" = sin elegir
+  tipoRepo: "" | "codigo" | "bd";
+  reposTexto: string;
+}
+
+// Parte de lo que trae el ticket, errores incluidos: el usuario corrige sobre
+// lo que Jira dijo, no sobre un formulario en blanco.
+function formInicial(t: TicketPendiente): FormCorreccion {
+  return {
+    projectKey: t.projectKey ?? "",
+    paisCodigo: t.paisCodigo ?? "",
+    tipoRepo: t.esBd ? "bd" : t.lenguaje ? "codigo" : "",
+    reposTexto: t.repos.join("\n"),
+  };
+}
+
+function aCorrecciones(f: FormCorreccion): CorreccionesTicket {
+  return {
+    projectKey: f.projectKey.trim(),
+    paisCodigo: f.paisCodigo,
+    esBd: f.tipoRepo === "" ? null : f.tipoRepo === "bd",
+    repos: parsearRepos(f.reposTexto),
+  };
+}
+
+function nombrePais(codigo: string): string {
+  return codigo === "PE" ? "Perú" : codigo === "CL" ? "Chile" : "—";
+}
 
 function Casilla({
   marcada,
@@ -85,6 +127,9 @@ export default function TicketsPanel({
   const [errorLista, setErrorLista] = useState("");
 
   const [elegido, setElegido] = useState<TicketPendiente | null>(null);
+  // Con valor, el ticket se gestiona con datos corregidos a mano.
+  const [corr, setCorr] = useState<FormCorreccion | null>(null);
+  const [validacion, setValidacion] = useState<ValidacionCorreccion | null>(null);
   const [etiquetas, setEtiquetas] = useState(true);
   const [cerrar, setCerrar] = useState(true);
   const [comentar, setComentar] = useState(true);
@@ -98,6 +143,7 @@ export default function TicketsPanel({
     setBuscando(true);
     setErrorLista("");
     setElegido(null);
+    setCorr(null);
     setResultado(null);
     setEvidencia(null);
     setErrorProceso("");
@@ -121,9 +167,51 @@ export default function TicketsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activo, jiraOk, bitbucketOk]);
 
+  // Los datos con los que se va a procesar: los del ticket o, si se corrigió,
+  // los del formulario. La revisión de abajo muestra siempre estos.
+  const efectivo = elegido
+    ? corr
+      ? {
+          projectKey: corr.projectKey.trim(),
+          pais: nombrePais(corr.paisCodigo),
+          repos: parsearRepos(corr.reposTexto),
+          esBd: corr.tipoRepo === "bd",
+        }
+      : {
+          projectKey: elegido.projectKey ?? "",
+          pais: elegido.pais ?? "—",
+          repos: elegido.repos,
+          esBd: elegido.esBd,
+        }
+    : null;
+
+  // Cada cambio del formulario se valida en Rust con las mismas reglas del
+  // proceso (sin red); aquí no se copia ninguna regla.
+  useEffect(() => {
+    if (!elegido || !corr) {
+      setValidacion(null);
+      return;
+    }
+    let cancelado = false;
+    invoke<ValidacionCorreccion>("jira_validar_correccion", {
+      ticket: elegido,
+      correcciones: aCorrecciones(corr),
+    })
+      .then((v) => {
+        if (!cancelado) setValidacion(v);
+      })
+      .catch((e) => {
+        if (!cancelado) setValidacion({ errores: [parseErr(e)], correcciones: [] });
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [elegido, corr]);
+
   // Repos de Base de Datos: sin Pipelines ni SonarQube, sin excepción.
-  const usaSonar = crearSonar && !!elegido && !elegido.esBd;
-  const puedeProcesar = jiraOk && bitbucketOk && (!usaSonar || sonarOk);
+  const usaSonar = crearSonar && !!efectivo && !efectivo.esBd;
+  const corregido = corr === null || (validacion !== null && validacion.errores.length === 0);
+  const puedeProcesar = jiraOk && bitbucketOk && (!usaSonar || sonarOk) && corregido;
 
   async function procesar() {
     if (!elegido) return;
@@ -134,7 +222,13 @@ export default function TicketsPanel({
     onInicio();
 
     try {
-      const opciones: OpcionesProceso = { workspace, sonar: usaSonar, etiquetas, cerrar };
+      const opciones: OpcionesProceso = {
+        workspace,
+        sonar: usaSonar,
+        etiquetas,
+        cerrar,
+        correcciones: corr ? aCorrecciones(corr) : undefined,
+      };
       const r = await invoke<ResultadoTicket>("jira_procesar_ticket", {
         clave: elegido.clave,
         opciones,
@@ -147,6 +241,7 @@ export default function TicketsPanel({
         setTickets((prev) => (prev ? prev.filter((t) => t.clave !== r.clave) : prev));
       }
       setElegido(null);
+      setCorr(null);
 
       if (!comentar) {
         setEvidencia({ estado: "no_pedida", detalle: "No se pidió publicar el comentario." });
@@ -171,6 +266,7 @@ export default function TicketsPanel({
               proyectoEtiqueta: r.proyectoEtiqueta,
               ramas: r.ramas,
               evidencia: r.evidencia,
+              correcciones: r.correcciones,
               imagenPngBase64: imagen,
             },
           });
@@ -267,15 +363,18 @@ export default function TicketsPanel({
                     <Button
                       variant="accent-outline"
                       className="text-xs px-2.5 py-1"
-                      disabled={t.errores.length > 0 || ejecutando}
+                      disabled={(t.errores.length > 0 && !t.corregible) || ejecutando}
                       onClick={() => {
                         setElegido(t);
+                        // Con errores, se abre el formulario con los datos tal
+                        // como vienen para que el usuario los corrija.
+                        setCorr(t.errores.length > 0 ? formInicial(t) : null);
                         setResultado(null);
                         setEvidencia(null);
                         setErrorProceso("");
                       }}
                     >
-                      Gestionar ticket
+                      {t.errores.length > 0 && t.corregible ? "Corregir y gestionar" : "Gestionar ticket"}
                     </Button>
                   </div>
                 </div>
@@ -325,7 +424,7 @@ export default function TicketsPanel({
                   <div className="space-y-0.5">
                     {t.errores.map((e, i) => (
                       <div key={i} className="text-xs" style={{ color: "var(--fail)" }}>
-                        No se puede procesar — {e}
+                        {t.corregible ? "Requiere corrección" : "No se puede procesar"} — {e}
                       </div>
                     ))}
                   </div>
@@ -342,24 +441,141 @@ export default function TicketsPanel({
           style={{ borderColor: "var(--accent)", background: "var(--surface)" }}
         >
           <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>
-            Revisa antes de procesar {elegido.clave}
+            {corr ? `Corrige los datos de ${elegido.clave}` : `Revisa antes de procesar ${elegido.clave}`}
           </div>
+
+          {corr && (
+            <div className="space-y-3">
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Los datos se cargaron tal como vienen en el ticket. El ticket en Jira no se modifica:
+                lo que cambies solo vale para esta corrida y queda anotado en el comentario al
+                solicitante.
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Proyecto — clave de Bitbucket, tal cual (respeta mayúsculas y minúsculas)
+                  </span>
+                  <input
+                    type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={corr.projectKey}
+                    onChange={(e) => setCorr({ ...corr, projectKey: e.target.value.trim() })}
+                    disabled={ejecutando}
+                    className="px-3 py-2 rounded-md text-sm outline-hidden disabled:opacity-50"
+                    style={{ ...ESTILO_INPUT, fontFamily: "var(--font-mono)" }}
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                    En el ticket: {elegido.proyecto ?? "vacío"}
+                  </span>
+                </label>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    País — define el nombre de la rama de desarrollo
+                  </span>
+                  <Dropdown
+                    value={corr.paisCodigo}
+                    onChange={(v) => setCorr({ ...corr, paisCodigo: v })}
+                    options={[
+                      { value: "", label: "Elegir…" },
+                      { value: "CL", label: "Chile — rama development" },
+                      { value: "PE", label: "Perú — rama develop" },
+                    ]}
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                    En el ticket: {elegido.pais ?? "vacío"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Tipo de repositorio — decide si llevan Pipelines y SonarQube
+                </span>
+                <Dropdown
+                  value={corr.tipoRepo}
+                  onChange={(v) => setCorr({ ...corr, tipoRepo: v as FormCorreccion["tipoRepo"] })}
+                  options={[
+                    { value: "", label: "Elegir…" },
+                    { value: "codigo", label: "Código — con Pipelines y SonarQube" },
+                    { value: "bd", label: "Base de Datos — sin Pipelines ni SonarQube" },
+                  ]}
+                />
+                <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                  Lenguaje / Tecnología en el ticket: {elegido.lenguaje ?? "vacío"}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Repositorios — uno por línea
+                </span>
+                <textarea
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  rows={Math.min(8, Math.max(3, corr.reposTexto.split("\n").length + 1))}
+                  value={corr.reposTexto}
+                  onChange={(e) => setCorr({ ...corr, reposTexto: e.target.value.toLowerCase() })}
+                  disabled={ejecutando}
+                  className="px-3 py-2 rounded-md text-sm outline-hidden resize-y disabled:opacity-50"
+                  style={{ ...ESTILO_INPUT, fontFamily: "var(--font-mono)", lineHeight: 1.7 }}
+                />
+                {elegido.repos.length > 0 && (
+                  <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                    En el ticket: {elegido.repos.join(", ")}
+                  </span>
+                )}
+              </div>
+
+              {validacion && validacion.errores.length > 0 && (
+                <div className="space-y-0.5">
+                  {validacion.errores.map((e, i) => (
+                    <div key={i} className="text-xs" style={{ color: "var(--fail)" }}>
+                      {e}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {validacion && validacion.errores.length === 0 && (
+                <div className="text-xs" style={{ color: "var(--ok)" }}>
+                  Los datos están completos y cumplen las reglas del proceso.
+                </div>
+              )}
+              {validacion && validacion.correcciones.length > 0 && (
+                <div className="rounded-md px-3 py-2 space-y-0.5" style={{ background: "var(--surface-raised)" }}>
+                  <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>
+                    Se anotará en el comentario al solicitante
+                  </div>
+                  {validacion.correcciones.map((c, i) => (
+                    <div key={i} className="text-xs" style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>
+                      {c}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1">
             <div className="text-xs mb-1.5" style={{ color: "var(--text-muted)" }}>
               Se va a hacer
             </div>
             <div className="text-xs" style={{ color: "var(--text)" }}>
-              Crear {elegido.repos.length} repositorio{elegido.repos.length === 1 ? "" : "s"} privado
-              {elegido.repos.length === 1 ? "" : "s"}, sin forks, en el proyecto {elegido.projectKey}{" "}
+              Crear {efectivo!.repos.length} repositorio{efectivo!.repos.length === 1 ? "" : "s"} privado
+              {efectivo!.repos.length === 1 ? "" : "s"}, sin forks, en el proyecto {efectivo!.projectKey}{" "}
               ({workspace})
             </div>
             <div className="text-xs" style={{ color: "var(--text)" }}>
-              Commit inicial con .gitignore y README.md estándar, y las ramas de {elegido.pais} desde
+              Commit inicial con .gitignore y README.md estándar, y las ramas de {efectivo!.pais} desde
               master
             </div>
-            <div className="text-xs" style={{ color: elegido.esBd ? "var(--partial)" : "var(--text)" }}>
-              {elegido.esBd
+            <div className="text-xs" style={{ color: efectivo!.esBd ? "var(--partial)" : "var(--text)" }}>
+              {efectivo!.esBd
                 ? "Repositorios de Base de Datos: se crean SIN Pipelines y SIN proyecto en SonarQube."
                 : "Activar Pipelines en cada repositorio."}
             </div>
@@ -370,14 +586,14 @@ export default function TicketsPanel({
               Después de crear
             </div>
             <Casilla
-              marcada={crearSonar && !elegido.esBd}
+              marcada={crearSonar && !efectivo!.esBd}
               onCambio={onCrearSonar}
-              deshabilitada={elegido.esBd}
+              deshabilitada={efectivo!.esBd}
               titulo="Crear los proyectos en SonarQube"
               detalle={
-                elegido.esBd
+                efectivo!.esBd
                   ? "No aplica a repositorios de Base de Datos."
-                  : `Con la key ${elegido.projectKey}_[repo], vinculados al repositorio. El widget en Bitbucket sigue siendo manual.`
+                  : `Con la key ${efectivo!.projectKey}_[repo], vinculados al repositorio. El widget en Bitbucket sigue siendo manual.`
               }
             />
             <Casilla
@@ -413,7 +629,14 @@ export default function TicketsPanel({
             <Button onClick={procesar} disabled={ejecutando || !puedeProcesar}>
               {ejecutando ? "Procesando…" : `Procesar ${elegido.clave}`}
             </Button>
-            <Button variant="secondary" onClick={() => setElegido(null)} disabled={ejecutando}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setElegido(null);
+                setCorr(null);
+              }}
+              disabled={ejecutando}
+            >
               Cancelar
             </Button>
             {ejecutando && (

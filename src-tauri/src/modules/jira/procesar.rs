@@ -31,7 +31,10 @@ use super::super::eks::config::RefreshError;
 use super::super::eks::permissions::emit_progress;
 use super::client::{mensaje_error, JiraClient};
 use super::credentials;
-use super::tickets::{etiqueta_pais, leer_ticket, pais_a_codigo, TicketPendiente, ESTADOS_PROCESABLES};
+use super::tickets::{
+    aplicar_correcciones, describir_correcciones, etiqueta_pais, leer_ticket, pais_a_codigo,
+    CorreccionesTicket, TicketPendiente, ESTADOS_PROCESABLES,
+};
 
 // Tag con el que la consola global identifica estas lineas: se reutiliza el
 // del modulo Bitbucket, que es de donde cuelga esta pantalla.
@@ -53,6 +56,10 @@ pub struct OpcionesProceso {
     pub sonar: bool,
     pub etiquetas: bool,
     pub cerrar: bool,
+    // Datos corregidos a mano cuando el ticket trae errores. Se aplican sobre
+    // el ticket releido y se valida de nuevo con las mismas reglas.
+    #[serde(default)]
+    pub correcciones: Option<CorreccionesTicket>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +88,8 @@ pub struct ResultadoTicket {
     pub proyecto_etiqueta: String,
     pub ramas: Vec<String>,
     pub evidencia: Vec<EvidenciaRepo>,
+    // Lo que se corrigio a mano respecto al ticket; va al comentario.
+    pub correcciones: Vec<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -119,6 +128,7 @@ pub fn cuerpo_comentario(
     evidencia: &[EvidenciaRepo],
     proyecto: &str,
     ramas: &[String],
+    correcciones: &[String],
     imagen: Option<&str>,
 ) -> String {
     let mut partes: Vec<String> = Vec::new();
@@ -145,6 +155,13 @@ pub fn cuerpo_comentario(
 
     partes.push(String::new());
     partes.push(format!("Ramas: {}", unir_es(ramas)));
+    if !correcciones.is_empty() {
+        partes.push(String::new());
+        partes.push("*Correcciones a la solicitud*".to_string());
+        for c in correcciones {
+            partes.push(format!("* {}", c));
+        }
+    }
     if let Some(nombre) = imagen {
         partes.push(String::new());
         partes.push(format!("!{}!", nombre));
@@ -404,7 +421,18 @@ pub async fn jira_procesar_ticket(
     emit_progress(MODULO, &app, "Jira: leyendo ticket", &clave, 1, PASOS, "running");
     let token = credentials::obtener_token().await?;
     let jira = JiraClient::new(&token).await?;
-    let ticket: TicketPendiente = leer_ticket(&jira, &clave).await?;
+    let original: TicketPendiente = leer_ticket(&jira, &clave).await?;
+
+    // Con correcciones, el ticket se trabaja con los datos corregidos y se
+    // valida otra vez: las reglas son las mismas que sin correcciones.
+    let mut ticket = original.clone();
+    let correcciones: Vec<String> = match &opciones.correcciones {
+        Some(c) => {
+            aplicar_correcciones(&mut ticket, c);
+            describir_correcciones(&original, &ticket)
+        }
+        None => Vec::new(),
+    };
 
     if !ticket.errores.is_empty() {
         return Err(RefreshError::new("validar_ticket", ticket.errores.join(" | ")));
@@ -478,6 +506,7 @@ pub async fn jira_procesar_ticket(
             proyecto_etiqueta,
             ramas: ramas_esperadas,
             evidencia: vec![],
+            correcciones,
         });
     }
 
@@ -536,6 +565,7 @@ pub async fn jira_procesar_ticket(
         proyecto_etiqueta,
         ramas: ramas_esperadas,
         evidencia,
+        correcciones,
     })
 }
 
@@ -546,6 +576,9 @@ pub struct PeticionEvidencia {
     pub proyecto_etiqueta: String,
     pub ramas: Vec<String>,
     pub evidencia: Vec<EvidenciaRepo>,
+    // Correcciones hechas a mano al ticket; se listan en el comentario.
+    #[serde(default)]
+    pub correcciones: Vec<String>,
     // PNG en base64, dibujado por la interfaz. None = comentario sin imagen.
     pub imagen_png_base64: Option<String>,
 }
@@ -589,6 +622,7 @@ pub async fn jira_publicar_evidencia(peticion: PeticionEvidencia) -> Result<(), 
         &peticion.evidencia,
         &peticion.proyecto_etiqueta,
         &peticion.ramas,
+        &peticion.correcciones,
         if usa_imagen { Some(nombre_imagen.as_str()) } else { None },
     );
 
@@ -670,6 +704,7 @@ Ramas: master, development y release\n\
             &[evid("br-java-cu-claveunica-domain"), evid("br-java-cu-claveunica-hsm")],
             "CRC (clave-unica)",
             &ramas,
+            &[],
             Some("evidencia-SCDO-4140.png"),
         );
         assert_eq!(obtenido, esperado);
@@ -678,12 +713,34 @@ Ramas: master, development y release\n\
     #[test]
     fn comentario_con_un_repo_va_en_singular_y_sin_lista() {
         let ramas = vec!["master".to_string(), "develop".to_string(), "release".to_string()];
-        let obtenido = cuerpo_comentario(&[evid("br-java-cu-claveunica-hsm")], "CRC (clave-unica)", &ramas, None);
+        let obtenido = cuerpo_comentario(&[evid("br-java-cu-claveunica-hsm")], "CRC (clave-unica)", &ramas, &[], None);
         assert_eq!(
             obtenido,
             "Se crea el repositorio solicitado en el proyecto CRC (clave-unica) de Bitbucket.\n\n\
 [https://bitbucket.org/banco_ripley/br-java-cu-claveunica-hsm]\n\n\
 Ramas: master, develop y release"
+        );
+    }
+
+    #[test]
+    fn comentario_lista_las_correcciones_antes_de_la_imagen() {
+        let ramas = vec!["master".to_string(), "development".to_string(), "release".to_string()];
+        let correcciones = vec!["Repositorio: 'br api' → 'br-api'".to_string()];
+        let obtenido = cuerpo_comentario(
+            &[evid("br-api")],
+            "CRC (clave-unica)",
+            &ramas,
+            &correcciones,
+            Some("evidencia-SCDO-1.png"),
+        );
+        assert_eq!(
+            obtenido,
+            "Se crea el repositorio solicitado en el proyecto CRC (clave-unica) de Bitbucket.\n\n\
+[https://bitbucket.org/banco_ripley/br-api]\n\n\
+Ramas: master, development y release\n\n\
+*Correcciones a la solicitud*\n\
+* Repositorio: 'br api' → 'br-api'\n\n\
+!evidencia-SCDO-1.png!"
         );
     }
 

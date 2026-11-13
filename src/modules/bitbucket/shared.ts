@@ -87,10 +87,32 @@ export interface TicketPendiente {
   repos: string[];
   tipo: string | null;
   pais: string | null;
+  // "CL" | "PE" si el país se reconoce; null si está vacío o no se entiende.
+  paisCodigo: string | null;
   lenguaje: string | null;
   esBd: boolean;
   // Motivos por los que no se puede procesar. Vacío = válido.
   errores: string[];
+  // El ticket no se pudo leer: solo trae la clave y el motivo.
+  ilegible: boolean;
+  // Los errores se pueden corregir a mano (no lo es un ticket que no sea Alta).
+  corregible: boolean;
+}
+
+// Datos corregidos a mano de un ticket con errores. No se escriben en Jira.
+export interface CorreccionesTicket {
+  projectKey: string;
+  // "CL" | "PE"; cualquier otro valor = sin definir.
+  paisCodigo: string;
+  // null = sin elegir el tipo de repositorio.
+  esBd: boolean | null;
+  repos: string[];
+}
+
+export interface ValidacionCorreccion {
+  errores: string[];
+  // Lo que cambia respecto al ticket: es lo que se informa al solicitante.
+  correcciones: string[];
 }
 
 export interface EvidenciaRepo {
@@ -104,6 +126,7 @@ export interface OpcionesProceso {
   sonar: boolean;
   etiquetas: boolean;
   cerrar: boolean;
+  correcciones?: CorreccionesTicket;
 }
 
 export interface ResultadoTicket {
@@ -119,6 +142,7 @@ export interface ResultadoTicket {
   proyectoEtiqueta: string;
   ramas: string[];
   evidencia: EvidenciaRepo[];
+  correcciones: string[];
 }
 
 export const URL_JIRA = "https://bancoripley1.atlassian.net";

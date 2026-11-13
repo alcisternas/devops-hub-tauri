@@ -16,7 +16,7 @@
 // - Solo se procesan solicitudes de tipo Alta.
 // ─────────────────────────────────────────────────────────────────────────
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::super::eks::config::RefreshError;
@@ -36,7 +36,7 @@ const CF_TIPO_SOLICITUD: &str = "customfield_10969";
 const CF_LENGUAJE: &str = "customfield_12792";
 const CF_PAIS: &str = "customfield_12891";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketPendiente {
     pub clave: String,
@@ -50,10 +50,43 @@ pub struct TicketPendiente {
     pub repos: Vec<String>,
     pub tipo: Option<String>,
     pub pais: Option<String>,
+    // "CL" o "PE" si el pais se reconoce; None si esta vacio o no se entiende.
+    pub pais_codigo: Option<String>,
     pub lenguaje: Option<String>,
     pub es_bd: bool,
     // Motivos por los que el ticket no se puede procesar. Vacio = valido.
     pub errores: Vec<String>,
+    // true si el ticket no se pudo leer (error de red o del formulario): solo
+    // trae la clave y el motivo, y no hay nada que corregir.
+    #[serde(default)]
+    pub ilegible: bool,
+    // true si los errores se pueden corregir a mano en la interfaz. Un ticket
+    // que no es de tipo Alta es otro proceso, no un dato mal escrito.
+    #[serde(default)]
+    pub corregible: bool,
+}
+
+// Datos que el usuario corrige en la interfaz cuando el ticket trae errores.
+// No se escriben en Jira: valen solo para esa corrida.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorreccionesTicket {
+    // Se respeta tal cual (hay una clave real en minusculas).
+    pub project_key: String,
+    // "CL" | "PE"; cualquier otro valor = sin definir.
+    pub pais_codigo: String,
+    // None = el usuario no eligio el tipo de repositorio.
+    pub es_bd: Option<bool>,
+    pub repos: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidacionCorreccion {
+    // Lo que sigue impidiendo procesar el ticket con esos datos.
+    pub errores: Vec<String>,
+    // Lo que cambia respecto al ticket: es lo que se informa al solicitante.
+    pub correcciones: Vec<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -100,6 +133,10 @@ pub fn es_base_de_datos(lenguaje: Option<&str>) -> bool {
     lenguaje
         .map(|l| sin_acentos(l.trim()) == "base de datos")
         .unwrap_or(false)
+}
+
+pub fn es_alta(tipo: Option<&str>) -> bool {
+    tipo.map(|t| t.trim().to_lowercase() == "alta").unwrap_or(false)
 }
 
 // "CRC - clave-unica" -> (Some("CRC"), Some("clave-unica")).
@@ -252,6 +289,136 @@ pub fn validar(t: &TicketPendiente) -> Vec<String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Correcciones a mano de un ticket con errores
+// ─────────────────────────────────────────────────────────────────────────
+
+// Minusculas, sin vacios y sin duplicados: igual que al leer el formulario.
+fn normalizar_repos(repos: &[String]) -> Vec<String> {
+    let mut salida: Vec<String> = Vec::new();
+    for r in repos {
+        let nombre = r.trim().to_lowercase();
+        if !nombre.is_empty() && !salida.contains(&nombre) {
+            salida.push(nombre);
+        }
+    }
+    salida
+}
+
+// Aplica las correcciones sobre el ticket y vuelve a validarlo con las mismas
+// reglas de siempre. El tipo de solicitud no se corrige: no hay campo para eso.
+pub fn aplicar_correcciones(t: &mut TicketPendiente, c: &CorreccionesTicket) {
+    let clave = c.project_key.trim();
+    t.project_key = if clave.is_empty() { None } else { Some(clave.to_string()) };
+
+    match c.pais_codigo.as_str() {
+        "CL" => {
+            t.pais = Some("Chile".into());
+            t.pais_codigo = Some("CL".into());
+        }
+        "PE" => {
+            t.pais = Some("Perú".into());
+            t.pais_codigo = Some("PE".into());
+        }
+        _ => {
+            t.pais = None;
+            t.pais_codigo = None;
+        }
+    }
+
+    if let Some(bd) = c.es_bd {
+        let tenia_lenguaje = t.lenguaje.as_deref().map(|l| !l.trim().is_empty()).unwrap_or(false);
+        t.lenguaje = if bd {
+            Some("Base de Datos".into())
+        } else if tenia_lenguaje && !t.es_bd {
+            // Ya era de codigo: se conserva el lenguaje que traia el ticket.
+            t.lenguaje.clone()
+        } else {
+            Some("Código".into())
+        };
+        t.es_bd = bd;
+    }
+
+    t.repos = normalizar_repos(&c.repos);
+    t.errores = validar(t);
+}
+
+fn comillas(items: &[String]) -> String {
+    items.iter().map(|i| format!("'{}'", i)).collect::<Vec<_>>().join(", ")
+}
+
+// Lo que cambio respecto al ticket original, en frases para el solicitante.
+pub fn describir_correcciones(original: &TicketPendiente, corregido: &TicketPendiente) -> Vec<String> {
+    let mut lineas: Vec<String> = Vec::new();
+
+    if original.project_key != corregido.project_key {
+        let antes = original
+            .project_key
+            .clone()
+            .or_else(|| original.proyecto.clone())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "sin definir".to_string());
+        lineas.push(format!(
+            "Proyecto de Bitbucket: '{}' → '{}'",
+            antes,
+            corregido.project_key.clone().unwrap_or_default()
+        ));
+    }
+
+    if original.pais_codigo != corregido.pais_codigo {
+        lineas.push(format!(
+            "País: '{}' → '{}'",
+            original.pais.clone().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "sin definir".into()),
+            corregido.pais.clone().unwrap_or_default()
+        ));
+    }
+
+    if original.lenguaje != corregido.lenguaje {
+        lineas.push(format!(
+            "Lenguaje / Tecnología: '{}' → '{}'",
+            original.lenguaje.clone().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "sin definir".into()),
+            corregido.lenguaje.clone().unwrap_or_default()
+        ));
+    }
+
+    let mut a = original.repos.clone();
+    let mut b = corregido.repos.clone();
+    a.sort();
+    b.sort();
+    if a != b {
+        if original.repos.len() == corregido.repos.len() {
+            for (antes, despues) in original.repos.iter().zip(corregido.repos.iter()) {
+                if antes != despues {
+                    lineas.push(format!("Repositorio: '{}' → '{}'", antes, despues));
+                }
+            }
+        } else {
+            lineas.push(format!(
+                "Repositorios: {} → {}",
+                comillas(&original.repos),
+                comillas(&corregido.repos)
+            ));
+        }
+    }
+
+    lineas
+}
+
+// Valida los datos corregidos sin tocar la red: la interfaz la llama en cada
+// cambio para mostrar los errores con las mismas reglas que usa el proceso.
+#[tauri::command]
+pub fn jira_validar_correccion(
+    ticket: TicketPendiente,
+    correcciones: CorreccionesTicket,
+) -> ValidacionCorreccion {
+    let mut corregido = ticket.clone();
+    aplicar_correcciones(&mut corregido, &correcciones);
+    ValidacionCorreccion {
+        correcciones: describir_correcciones(&ticket, &corregido),
+        errores: corregido.errores,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Lectura desde Jira
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -364,6 +531,9 @@ pub async fn leer_ticket(client: &JiraClient, clave: &str) -> Result<TicketPendi
     let proyecto = campo_texto(&fields, CF_PROYECTO_BITBUCKET);
     let (project_key, project_name) = parsear_proyecto(proyecto.as_deref());
     let lenguaje = campo_texto(&fields, CF_LENGUAJE);
+    let tipo = campo_texto(&fields, CF_TIPO_SOLICITUD);
+    let corregible = es_alta(tipo.as_deref());
+    let pais = campo_texto(&fields, CF_PAIS);
     let respuestas = respuestas_formulario(client, clave).await?;
 
     let mut ticket = TicketPendiente {
@@ -384,14 +554,43 @@ pub async fn leer_ticket(client: &JiraClient, clave: &str) -> Result<TicketPendi
         project_key,
         project_name,
         repos: repos_desde_respuestas(&respuestas),
-        tipo: campo_texto(&fields, CF_TIPO_SOLICITUD),
-        pais: campo_texto(&fields, CF_PAIS),
+        tipo,
+        pais_codigo: pais_a_codigo(pais.as_deref()).map(String::from),
+        pais,
         es_bd: es_base_de_datos(lenguaje.as_deref()),
         lenguaje,
         errores: Vec::new(),
+        ilegible: false,
+        corregible,
     };
     ticket.errores = validar(&ticket);
     Ok(ticket)
+}
+
+// Marcador para un ticket que no se pudo leer: aparece en la lista con su
+// motivo en vez de cancelar la busqueda de todos los demas.
+fn ticket_ilegible(clave: &str, motivo: &str) -> TicketPendiente {
+    TicketPendiente {
+        clave: clave.to_string(),
+        resumen: "No se pudo leer el ticket".to_string(),
+        estado: String::new(),
+        etiquetas: Vec::new(),
+        proyecto: None,
+        project_key: None,
+        project_name: None,
+        repos: Vec::new(),
+        tipo: None,
+        pais: None,
+        pais_codigo: None,
+        lenguaje: None,
+        es_bd: false,
+        errores: vec![format!(
+            "No se pudo leer el ticket: {}. Usa \"Actualizar lista\" para reintentar.",
+            motivo
+        )],
+        ilegible: true,
+        corregible: false,
+    }
 }
 
 #[tauri::command]
@@ -401,7 +600,11 @@ pub async fn jira_tickets_pendientes() -> Result<Vec<TicketPendiente>, RefreshEr
 
     let mut tickets: Vec<TicketPendiente> = Vec::new();
     for clave in claves_pendientes(&client).await? {
-        tickets.push(leer_ticket(&client, &clave).await?);
+        // Un ticket que no se puede leer no debe bloquear a los demas.
+        match leer_ticket(&client, &clave).await {
+            Ok(t) => tickets.push(t),
+            Err(e) => tickets.push(ticket_ilegible(&clave, &e.mensaje)),
+        }
     }
     Ok(tickets)
 }
@@ -426,9 +629,12 @@ mod pruebas {
             repos: vec!["br-java-cu-claveunica-domain".into()],
             tipo: Some("Alta".into()),
             pais: Some("Chile".into()),
+            pais_codigo: Some("CL".into()),
             lenguaje: Some("Java".into()),
             es_bd: false,
             errores: vec![],
+            ilegible: false,
+            corregible: true,
         }
     }
 
@@ -578,5 +784,133 @@ mod pruebas {
 
         t.repos = vec![];
         assert!(validar(&t).iter().any(|m| m.contains("ningun nombre de repositorio")));
+    }
+
+    fn corr(clave: &str, pais: &str, bd: Option<bool>, repos: &[&str]) -> CorreccionesTicket {
+        CorreccionesTicket {
+            project_key: clave.into(),
+            pais_codigo: pais.into(),
+            es_bd: bd,
+            repos: repos.iter().map(|r| r.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn solo_las_altas_son_corregibles() {
+        assert!(es_alta(Some("Alta")));
+        assert!(es_alta(Some(" alta ")));
+        assert!(!es_alta(Some("Baja")));
+        assert!(!es_alta(Some("Modificación")));
+        assert!(!es_alta(None));
+    }
+
+    #[test]
+    fn corregir_un_nombre_con_espacio_deja_el_ticket_valido_y_lo_informa() {
+        let mut t = ticket_base();
+        t.repos = vec!["br api sd00295-oi00026".into()];
+        t.errores = validar(&t);
+        assert_eq!(t.errores.len(), 1);
+        let original = t.clone();
+
+        aplicar_correcciones(&mut t, &corr("CRC", "CL", Some(false), &["BR-API-SD00295-OI00026"]));
+        assert!(t.errores.is_empty(), "{:?}", t.errores);
+        assert_eq!(t.repos, vec!["br-api-sd00295-oi00026".to_string()]);
+        assert_eq!(
+            describir_correcciones(&original, &t),
+            vec!["Repositorio: 'br api sd00295-oi00026' → 'br-api-sd00295-oi00026'".to_string()]
+        );
+    }
+
+    #[test]
+    fn la_clave_de_proyecto_se_respeta_en_minusculas() {
+        let mut t = ticket_base();
+        t.project_key = None;
+        t.proyecto = Some("Solo nombre".into());
+        t.errores = validar(&t);
+        assert!(!t.errores.is_empty());
+        let original = t.clone();
+
+        aplicar_correcciones(&mut t, &corr("peru_control_de_cambios", "CL", Some(false), &["ok-repo"]));
+        assert_eq!(t.project_key.as_deref(), Some("peru_control_de_cambios"));
+        assert!(t.errores.is_empty(), "{:?}", t.errores);
+        assert!(describir_correcciones(&original, &t)
+            .iter()
+            .any(|l| l == "Proyecto de Bitbucket: 'Solo nombre' → 'peru_control_de_cambios'"));
+    }
+
+    #[test]
+    fn pais_y_tipo_de_repositorio_sin_definir_siguen_dando_error() {
+        let mut t = ticket_base();
+        t.pais = None;
+        t.pais_codigo = None;
+        t.lenguaje = None;
+        t.errores = validar(&t);
+        assert_eq!(t.errores.len(), 2);
+        let original = t.clone();
+
+        // Sin elegir nada, los dos errores siguen.
+        let mut sin_elegir = t.clone();
+        aplicar_correcciones(&mut sin_elegir, &corr("CRC", "", None, &["ok-repo"]));
+        assert_eq!(sin_elegir.errores.len(), 2, "{:?}", sin_elegir.errores);
+
+        // Eligiendo Perú y Base de Datos, quedan resueltos.
+        aplicar_correcciones(&mut t, &corr("CRC", "PE", Some(true), &["ok-repo"]));
+        assert!(t.errores.is_empty(), "{:?}", t.errores);
+        assert!(t.es_bd);
+        assert_eq!(t.pais_codigo.as_deref(), Some("PE"));
+        let lineas = describir_correcciones(&original, &t);
+        assert!(lineas.contains(&"País: 'sin definir' → 'Perú'".to_string()), "{:?}", lineas);
+        assert!(
+            lineas.contains(&"Lenguaje / Tecnología: 'sin definir' → 'Base de Datos'".to_string()),
+            "{:?}",
+            lineas
+        );
+    }
+
+    #[test]
+    fn pasar_de_base_de_datos_a_codigo_no_deja_el_lenguaje_contradictorio() {
+        let mut t = ticket_base();
+        t.lenguaje = Some("Base de Datos".into());
+        t.es_bd = true;
+        aplicar_correcciones(&mut t, &corr("CRC", "CL", Some(false), &["ok-repo"]));
+        assert!(!t.es_bd);
+        assert_eq!(t.lenguaje.as_deref(), Some("Código"));
+    }
+
+    #[test]
+    fn sin_cambios_no_hay_correcciones_que_informar() {
+        let original = ticket_base();
+        let mut t = original.clone();
+        aplicar_correcciones(&mut t, &corr("CRC", "CL", Some(false), &["br-java-cu-claveunica-domain"]));
+        assert!(t.errores.is_empty());
+        assert!(describir_correcciones(&original, &t).is_empty());
+    }
+
+    #[test]
+    fn el_tipo_de_solicitud_no_se_corrige() {
+        let mut t = ticket_base();
+        t.tipo = Some("Baja".into());
+        aplicar_correcciones(&mut t, &corr("CRC", "CL", Some(false), &["ok-repo"]));
+        assert_eq!(t.errores.len(), 1, "{:?}", t.errores);
+    }
+
+    #[test]
+    fn repos_corregidos_en_otra_cantidad_se_informan_en_una_linea() {
+        let mut original = ticket_base();
+        original.repos = vec!["a b".into()];
+        let mut t = original.clone();
+        aplicar_correcciones(&mut t, &corr("CRC", "CL", Some(false), &["a-b", "c-d"]));
+        assert_eq!(
+            describir_correcciones(&original, &t),
+            vec!["Repositorios: 'a b' → 'a-b', 'c-d'".to_string()]
+        );
+    }
+
+    #[test]
+    fn un_ticket_ilegible_trae_el_motivo_y_no_es_corregible() {
+        let t = ticket_ilegible("SCDO-9", "HTTP 500");
+        assert!(t.ilegible && !t.corregible);
+        assert_eq!(t.errores.len(), 1);
+        assert!(t.errores[0].contains("HTTP 500"));
     }
 }

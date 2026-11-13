@@ -49,7 +49,7 @@ Creado por el chat de Clusters. Propósito general.
 
 Archivo de registro de todos los comandos Tauri. **Nadie entrega este archivo completo.** Solo se entregan las líneas a agregar. Razón: entregar el archivo completo sobre una base vieja elimina silenciosamente los comandos de otros módulos sin error de compilación.
 
-Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4), Jira (6), Hardening (6, más el estado `EstadoHardening` en `.manage`).
+Estado actual de módulos registrados: Clusters (~16 comandos), Bitbucket (4), Sonar (3), CI/CD (4), Jira (7), Hardening (6, más el estado `EstadoHardening` en `.manage`).
 
 Comando remanente sin uso en frontend: `get_eks_accounts` — candidato a eliminar.
 
@@ -64,6 +64,8 @@ Mismo criterio que `lib.rs`: solo entregar las líneas a agregar.
 ## Dependencias entre módulos de backend
 
 `jira::procesar` llama directamente a `bitbucket::full_run::bitbucket_crear_repos` y usa `ConfigRun`, `ResumenRun`, `ResultadoRepo`, `repos::verificar`, `repos::rama_desarrollo`, `BBClient` y `bitbucket::credentials::obtener_credenciales`. **Si cambia la firma o los campos de cualquiera de ellos, Jira se rompe** (agregar un campo a `ConfigRun` rompe su constructor en `procesar.rs`). Avisar antes de cambiarlos, igual que con CI/CD.
+
+**Contrato interno de Jira (v0.6.13).** La interfaz del modo Jira (`TicketsPanel.tsx`, `shared.ts`) y Rust comparten estos tipos, en camelCase: `TicketPendiente` (suma `paisCodigo`, `ilegible` y `corregible`; ahora también se deserializa, porque la interfaz lo envía a `jira_validar_correccion`), `CorreccionesTicket` (`projectKey`, `paisCodigo`, `esBd`, `repos`) y `ValidacionCorreccion` (`errores`, `correcciones`). `OpcionesProceso.correcciones` es opcional; `ResultadoTicket.correcciones` y `PeticionEvidencia.correcciones` llevan al comentario lo que se cambió (en esta última, con valor por defecto vacío). Si cambia cualquiera de los campos, hay que cambiar los dos lados a la vez. `cuerpo_comentario` recibe `correcciones` y, vacía, produce el mismo texto de antes.
 
 `hardening` es independiente: no usa código de otros módulos de backend, solo `eks::config::RefreshError` y `eks::permissions::emit_progress`, como el resto. Tampoco los usa nadie más.
 

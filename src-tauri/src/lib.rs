@@ -143,6 +143,7 @@ pub fn run() {
             jira::credentials::jira_cred_save,
             jira::credentials::jira_cred_delete,
             jira::tickets::jira_tickets_pendientes,
+            jira::tickets::jira_validar_correccion,
             jira::procesar::jira_procesar_ticket,
             jira::procesar::jira_publicar_evidencia,
             hardening::comandos::hardening_herramientas,

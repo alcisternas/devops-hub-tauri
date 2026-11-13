@@ -91,6 +91,7 @@ Versiones publicadas:
 | 0.6.10 | Fix: `ensure_gcp_session` vuelve a renovar la sesión GCP sola (login en el navegador) en vez de devolver un error sin salida; "Cargar clusters" limpia las marcas de lo cargado |
 | 0.6.11 | Fix: GKE carga con `--dns-endpoint` (sin él Lens daba timeout contra la IP privada); EKS Perú pasa de `titan-pipeline` a roles SSO reales por cuenta, como Chile |
 | 0.6.12 | Mejora: la fase A del recorrido de EKS Perú (sts, listado y describe por cuenta y rol) corre en paralelo (6 a la vez); la escritura de perfiles sigue en serie |
+| 0.6.13 | Mejora: en el modo Jira, un ticket con datos erróneos se corrige en pantalla ("Corregir y gestionar") y sigue el flujo de cierre automático; un ticket ilegible ya no bloquea la lista |
 
 Versiones planificadas:
 
@@ -191,6 +192,7 @@ Usar `var(--bg)`, `var(--surface)`, `var(--text)`, etc. definidos en `src/index.
 - **Los tokens de Jira con scopes no sirven contra `<sitio>.atlassian.net`**: hay que usar `api.atlassian.com/ex/jira/<cloudId>` con Bearer. El `cloudId` sale de `<sitio>/_edge/tenant_info`, sin autenticación. La API de formularios tiene otra base (`api.atlassian.com/jira/forms/cloud/<cloudId>`).
 - **Los nombres de repositorio del ticket no están en los campos "Repositorio 1-5"** (vienen vacíos): viven en las respuestas del formulario "ABM de Repositorios Bitbucket".
 - **La clave del proyecto de Bitbucket no se pasa a mayúsculas**: existe una real en minúsculas (`peru_control_de_cambios`). El campo `projectKey` del modo manual sí la fuerza a mayúsculas; el modo Jira usa la del ticket tal cual.
+- **Un ticket de Jira con datos erróneos se corrige en la interfaz, no pasando al modo Manual.** El modo Manual solo crea repos: no verifica el proyecto, no aplica la regla de Base de Datos, no etiqueta, no cierra ni responde al solicitante, y fuerza la clave a mayúsculas. → "Corregir y gestionar" aplica las correcciones sobre el ticket releído (`aplicar_correcciones` en `jira/tickets.rs`) y vuelve a correr `validar`: una sola fuente de reglas. Las correcciones **no se escriben en Jira**; van al comentario al solicitante. El tipo de solicitud distinto de Alta no es corregible. Un ticket que no se puede leer se lista como `ilegible` en vez de cancelar toda la búsqueda.
 - **Etiquetas de Jira**: cualquier texto distinto crea una etiqueta nueva. Solo se agregan `ACN`, `DEVOPS-CHAPTER` y `CHILE`/`PERU` (sin tilde, aunque el campo País diga "Perú").
 - **Tailwind 4 cambia valores por defecto sin avisar**: la fuente del tema (4.3 usa otra lista que Tailwind 3), el cursor de los botones (flecha en vez de mano) y el color de borde. `index.css` conserva los de Tailwind 3 con las que se diseñó la app.
 - **El módulo Hardening es un port verificado, no una reescritura libre.** `testdata/oro.json` lo genera el Python de Studio; si el motor cambia, se regenera y se revisan las diferencias. `workdir` se valida acá (Studio no lo hace) y la cabecera del Dockerfile lleva la firma del hub (la prueba usa la de Studio para comparar la huella).

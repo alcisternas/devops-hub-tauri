@@ -10,6 +10,27 @@ funcionalidad nueva.
 
 ---
 
+## 0.6.13
+
+**Mejorado**
+
+- **Modo "Desde ticket de Jira": un ticket con datos erróneos ya no queda bloqueado, se corrige en pantalla y sigue el flujo de cierre automático.** Antes, un ticket con un dato que `validar` rechazaba (nombre de repo con espacio o URL, país o lenguaje vacíos, proyecto sin el formato `CLAVE - nombre`) mostraba "No se puede procesar" con el botón deshabilitado, y la única salida era el modo Manual, que solo cubre la creación: no verifica el proyecto, no aplica la regla de Base de Datos, no etiqueta, no cierra y no responde al solicitante. Ahora esos tickets muestran **"Corregir y gestionar"**, que abre un formulario con los datos tal como vienen del ticket (proyecto, país, tipo de repositorio y repos, con el valor original debajo de cada campo). Cada cambio se valida en Rust con `jira_validar_correccion` (mismas reglas de `validar`, sin red), de modo que la interfaz no copia ninguna regla. Con los errores resueltos se habilita el mismo panel de confirmación de siempre y el recorrido automático completo: verificación del proyecto y de los repos, creación, etiquetas, cierre y evidencia.
+- **Las correcciones no se escriben en el ticket de Jira**: valen solo para la corrida y se listan en el comentario público al solicitante, en un bloque "Correcciones a la solicitud" (por ejemplo `Repositorio: 'br api' → 'br-api'`). Sin correcciones el comentario es idéntico al de antes (la prueba del texto validado sigue igual).
+- **La clave del proyecto se respeta tal cual** en el flujo corregido (mayúsculas y minúsculas), a diferencia del modo Manual, que la fuerza a mayúsculas y por eso no permite claves como `peru_control_de_cambios`.
+- **El tipo de solicitud no se corrige**: un ticket que no es Alta (Baja, Modificación o vacío) es otro proceso y sigue sin poder procesarse (`corregible = false`).
+
+**Corregido**
+
+- **Un solo ticket ilegible cancelaba la lista completa.** `jira_tickets_pendientes` propagaba con `?` el error de lectura de cualquier ticket (error de red, del formulario), y la pantalla quedaba sin ninguno. Ahora ese ticket aparece en la lista con el motivo y `ilegible = true`, sin botón de gestión, y los demás se ven con normalidad; "Actualizar lista" lo reintenta. La búsqueda inicial de claves sí sigue siendo un error total: sin ella no hay lista.
+
+**Contratos tocados** (ver `CONTRATOS.md`): comando nuevo `jira_validar_correccion`; `TicketPendiente` suma `paisCodigo`, `ilegible` y `corregible` (y ahora también se deserializa, porque la interfaz lo devuelve al validar); `OpcionesProceso` suma `correcciones` opcional; `ResultadoTicket` suma `correcciones`; `PeticionEvidencia` suma `correcciones` (con valor por defecto vacío); `cuerpo_comentario` recibe la lista de correcciones.
+
+**Verificación:** `cargo check` limpio, 28 pruebas (`cargo test --lib jira`; 10 nuevas: nombre con espacio, clave en minúscula, país y tipo sin elegir, paso de Base de Datos a código, sin cambios, tipo no corregible, repos en distinta cantidad, ticket ilegible, comentario con correcciones) y `tsc --noEmit` sin errores. **No probado:** el formulario no se recorrió en la app ni en el navegador, y no hubo ninguna escritura real contra Jira ni Bitbucket con datos corregidos. Pendiente con un ticket real que traiga un nombre con espacio.
+
+**Archivos fuera del módulo propio tocados:** `src-tauri/src/lib.rs`, una sola línea (registro de `jira_validar_correccion`).
+
+---
+
 ## 0.6.12
 
 **Mejorado**
